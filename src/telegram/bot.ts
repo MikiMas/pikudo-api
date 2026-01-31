@@ -16,7 +16,7 @@ export function isValidTelegramSecret(req: Request): boolean {
   const expected = (process.env.TELEGRAM_WEBHOOK_SECRET ?? "").trim();
   if (!expected) return true;
   const got = (req.headers.get("x-telegram-bot-api-secret-token") ?? "").trim();
-  return got && got === expected;
+  return Boolean(got && got === expected);
 }
 
 export async function sendTelegramMessage(chatId: number | string, text: string): Promise<void> {
