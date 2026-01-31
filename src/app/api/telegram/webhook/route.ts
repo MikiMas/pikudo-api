@@ -81,10 +81,12 @@ async function createPayAndReply(chatId: number, itemKey: string) {
 
 export async function POST(req: Request) {
   if (!isValidTelegramSecret(req)) {
+    console.warn("[telegram] invalid webhook secret");
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
   const update = (await req.json().catch(() => null)) as TelegramUpdate | null;
+  console.log("[telegram] update received");
   const message = update?.message;
   const chatId = message?.chat?.id;
   const text = (message?.text ?? "").trim();
@@ -103,6 +105,7 @@ export async function POST(req: Request) {
 
   if (callbackChatId && callbackData.startsWith("item:")) {
     const itemKey = callbackData.slice("item:".length).trim().toLowerCase();
+    console.log("[telegram] callback item", { chatId: callbackChatId, itemKey });
     if (!getCatalogItem(itemKey)) {
       await sendTelegramMessage(callbackChatId, `Producto no valido. ${formatCatalogList()}`);
       return NextResponse.json({ ok: true }, { status: 200 });
@@ -122,6 +125,7 @@ export async function POST(req: Request) {
 
   if (!text || text === "/start") {
     const options = getCatalogOptions();
+    console.log("[telegram] start/options", { chatId, optionsCount: options.length });
     if (options.length > 0) {
       await sendTelegramOptions(chatId, "Elige una opcion:", options);
     } else {
@@ -132,6 +136,7 @@ export async function POST(req: Request) {
 
   try {
     const itemKey = normalizeItemKey(text) ?? getDefaultItemKey();
+    console.log("[telegram] text flow", { chatId, itemKey, text });
     if (!itemKey) {
       await sendTelegramMessage(chatId, `Indica el producto. Ejemplo: "algo". ${formatCatalogList()}`);
       return NextResponse.json({ ok: true }, { status: 200 });
@@ -144,9 +149,11 @@ export async function POST(req: Request) {
     }
 
     await createPayAndReply(chatId, itemKey);
+    console.log("[telegram] order created", { chatId, itemKey });
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {
     const messageText = err instanceof Error ? err.message : "ERROR";
+    console.error("[telegram] error", messageText);
     await sendTelegramMessage(chatId, `Ahora mismo no puedo crear el pago: ${messageText}`);
     return NextResponse.json({ ok: false, error: messageText }, { status: 500 });
   }
