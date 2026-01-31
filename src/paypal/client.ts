@@ -78,6 +78,7 @@ async function fetchAccessToken(): Promise<{ token: string; expiresIn: number }>
 
   const data = (await resp.json().catch(() => null)) as { access_token?: string; expires_in?: number } | null;
   if (!data?.access_token) throw new Error("PAYPAL_TOKEN_FAILED");
+  console.log("[paypal] access token ok");
   return { token: data.access_token, expiresIn: Math.max(0, Number(data.expires_in ?? 0)) };
 }
 
@@ -166,6 +167,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   if (!id) throw new Error("PAYPAL_ORDER_FAILED");
 
   const approveUrl = data?.links?.find((l) => l?.rel === "approve")?.href ?? getPayPalApproveFallback(id);
+  console.log("[paypal] order created", { id, approveUrl });
   return { id, approveUrl };
 }
 
@@ -179,12 +181,14 @@ export async function captureOrder(orderId: string): Promise<CaptureOrderResult>
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => "");
+    console.error("[paypal] capture failed", { orderId, status: resp.status, errText });
     throw new Error(`PAYPAL_CAPTURE_FAILED${errText ? `: ${errText}` : ""}`);
   }
 
   const data = (await resp.json().catch(() => null)) as any;
   const captureId = data?.purchase_units?.[0]?.payments?.captures?.[0]?.id;
   const status = String(data?.status ?? "");
+  console.log("[paypal] capture response", { orderId, status, captureId });
   return { status, captureId, raw: data };
 }
 
