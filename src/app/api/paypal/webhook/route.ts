@@ -67,17 +67,19 @@ export async function POST(req: Request) {
   const supabase = supabaseAdmin();
   const { data: order } = await supabase
     .from("paypal_orders")
-    .select("id,paypal_order_id,chat_id,email,item_key,status,capture_id")
+    .select("id,paypal_order_id,chat_id,item_key,status,capture_id")
     .eq("paypal_order_id", orderId)
     .maybeSingle<PayPalOrderRow>();
 
   if (!order) return NextResponse.json({ ok: true, ignored: true, reason: "ORDER_NOT_FOUND" }, { status: 200 });
+  console.log("[paypal] order loaded", { orderId, status: order.status, itemKey: order.item_key, chatId: order.chat_id });
   if (order.status === "fulfilled") return NextResponse.json({ ok: true, ignored: true, reason: "ALREADY_FULFILLED" }, { status: 200 });
 
   let captureId = order.capture_id ?? null;
 
   try {
     if (eventType === "CHECKOUT.ORDER.APPROVED") {
+      console.log("[paypal] capture start", { orderId });
       const capture = await captureOrder(orderId);
       captureId = capture.captureId ?? captureId;
       const captureStatus = String(capture.status ?? "").toUpperCase();
