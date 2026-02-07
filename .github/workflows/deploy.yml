@@ -12,9 +12,20 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
+          script_stop: true
           script: |
+            set -euxo pipefail
+
             cd /var/www/pikudo-api
-            git pull
+            git fetch --all --prune
+            git checkout main
+            git reset --hard origin/main
+
+            echo "DEPLOY_COMMIT=$(git rev-parse --short HEAD)"
+
             npm ci
             npm run build
-            pm2 restart pikudo-api
+
+            pm2 describe pikudo-api >/dev/null 2>&1 && pm2 restart pikudo-api --update-env || pm2 start npm --name pikudo-api -- start
+            pm2 save
+            pm2 describe pikudo-api
