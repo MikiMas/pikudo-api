@@ -1,4 +1,4 @@
-﻿import type { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 function isAllowedOrigin(req: NextRequest, origin: string): boolean {
@@ -12,8 +12,8 @@ function isAllowedOrigin(req: NextRequest, origin: string): boolean {
   }
 }
 
-function logApi(url: string, status: number | "forward") {
-  console.log("[API]", { url, status });
+function logApi(pathname: string, status: number) {
+  console.log("[API]", pathname, status);
 }
 
 function withApiHeaders(res: NextResponse, req: NextRequest): NextResponse {
@@ -38,24 +38,21 @@ function withApiHeaders(res: NextResponse, req: NextRequest): NextResponse {
 export function middleware(req: NextRequest) {
   if (!req.nextUrl.pathname.startsWith("/api/")) return NextResponse.next();
 
-  const fullUrl = req.nextUrl.toString();
+  const pathname = req.nextUrl.pathname;
 
   // Avoid cloning large multipart bodies for upload endpoint.
-  if (req.nextUrl.pathname === "/api/upload") {
-    logApi(fullUrl, "forward");
+  if (pathname === "/api/upload") {
     return NextResponse.next();
   }
 
   if (req.method === "OPTIONS") {
-    logApi(fullUrl, 204);
+    logApi(pathname, 204);
     return withApiHeaders(new NextResponse(null, { status: 204 }), req);
   }
 
-  logApi(fullUrl, "forward");
   return withApiHeaders(NextResponse.next(), req);
 }
 
 export const config = {
   matcher: ["/api/:path*"]
 };
-
