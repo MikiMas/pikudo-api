@@ -1,20 +1,32 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-function requireEnv(name: "SUPABASE_URL" | "SUPABASE_SERVICE_ROLE_KEY"): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing environment variable: ${name}`);
-  return value;
-}
+import {
+  requireSupabaseProjectEnv,
+  type SupabaseProject
+} from "@/lib/supabaseProjects";
 
-export function supabaseAdmin() {
-  const url = requireEnv("SUPABASE_URL");
-  const serviceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+const clients = new Map<SupabaseProject, SupabaseClient>();
 
-  return createClient(url, serviceRoleKey, {
+export function supabaseAdmin(project: SupabaseProject = "pikudo"): SupabaseClient {
+  const existing = clients.get(project);
+  if (existing) {
+    return existing;
+  }
+
+  const url = requireSupabaseProjectEnv(project, "url");
+  const serviceRoleKey = requireSupabaseProjectEnv(project, "serviceRole");
+
+  const client = createClient(url, serviceRoleKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false
     }
   });
+
+  clients.set(project, client);
+  return client;
 }
 
+export function supabaseAdminForProject(project: SupabaseProject): SupabaseClient {
+  return supabaseAdmin(project);
+}

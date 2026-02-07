@@ -1,4 +1,4 @@
-﻿import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { supabaseAdminForProject } from "@/lib/supabaseAdmin";
 
 export type LatLng = { lat: number; lng: number };
 
@@ -69,7 +69,7 @@ function ensureDifficulty(value: unknown): RouteDifficulty {
 }
 
 export async function getProfileById(userId: string) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
   const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
 
   if (error) {
@@ -89,7 +89,7 @@ export async function upsertProfileById(
     default_share_live_location?: boolean;
   }
 ) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
   const payload: Record<string, unknown> = {};
 
   if (typeof input.username === "string") payload.username = input.username;
@@ -115,7 +115,7 @@ export async function upsertProfileById(
 }
 
 export async function getHomeStats(userId: string) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
 
   const [bikesRes, routesRes, sessionsRes] = await Promise.all([
     supabase.from("bikes").select("id", { count: "exact", head: true }).eq("owner_id", userId),
@@ -135,7 +135,7 @@ export async function getHomeStats(userId: string) {
 }
 
 export async function listGarage(userId: string) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
   const { data, error } = await supabase
     .from("bikes")
     .select("*, bike_mods(*)")
@@ -150,7 +150,7 @@ export async function listGarage(userId: string) {
 }
 
 export async function createBike(userId: string, input: CreateBikeInput) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
 
   const payload = {
     owner_id: userId,
@@ -174,7 +174,7 @@ export async function createBike(userId: string, input: CreateBikeInput) {
 }
 
 export async function createBikeMod(userId: string, input: CreateBikeModInput) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
 
   const { data: bike, error: bikeError } = await supabase
     .from("bikes")
@@ -205,7 +205,7 @@ export async function createBikeMod(userId: string, input: CreateBikeModInput) {
 }
 
 export async function listRoutes() {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
   const { data, error } = await supabase
     .from("routes")
     .select("*, profiles!routes_created_by_fkey(username)")
@@ -220,7 +220,7 @@ export async function listRoutes() {
 }
 
 export async function getRoute(routeId: string) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
   const { data, error } = await supabase
     .from("routes")
     .select("*, profiles!routes_created_by_fkey(username)")
@@ -235,7 +235,7 @@ export async function getRoute(routeId: string) {
 }
 
 export async function createRoute(userId: string, input: CreateRouteInput) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
 
   const payload = {
     created_by: userId,
@@ -259,7 +259,7 @@ export async function createRoute(userId: string, input: CreateRouteInput) {
 }
 
 export async function listRoutePoints(routeId: string) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
   const { data, error } = await supabase
     .from("route_points")
     .select("id, route_id, point_order, lat, lng")
@@ -274,7 +274,7 @@ export async function listRoutePoints(routeId: string) {
 }
 
 export async function replaceRoutePoints(routeId: string, userId: string, points: LatLng[]) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
 
   const route = await getRoute(routeId);
   if (!route) {
@@ -310,7 +310,7 @@ export async function replaceRoutePoints(routeId: string, userId: string, points
 }
 
 export async function listActiveRiders(routeId: string) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
   const { data, error } = await supabase
     .from("route_sessions")
     .select("id, user_id, last_lat, last_lng, last_seen_at, is_location_shared, status, profiles!route_sessions_user_id_fkey(username)")
@@ -327,7 +327,7 @@ export async function listActiveRiders(routeId: string) {
 }
 
 export async function getMyActiveSession(routeId: string, userId: string) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
   const { data, error } = await supabase
     .from("route_sessions")
     .select("*")
@@ -344,7 +344,7 @@ export async function getMyActiveSession(routeId: string, userId: string) {
 }
 
 export async function startRouteSession(routeId: string, userId: string, isLocationShared: boolean) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
 
   const existing = await getMyActiveSession(routeId, userId);
   if (existing) {
@@ -370,7 +370,7 @@ export async function startRouteSession(routeId: string, userId: string, isLocat
 }
 
 export async function stopRouteSession(sessionId: string, userId: string) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
 
   const { data: session, error: sessionError } = await supabase
     .from("route_sessions")
@@ -407,7 +407,7 @@ export async function sendLocationTick(input: {
   headingDeg?: number | null;
   accuracyM?: number | null;
 }) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
 
   const { data: session, error: sessionError } = await supabase
     .from("route_sessions")
@@ -458,7 +458,7 @@ export async function sendLocationTick(input: {
 }
 
 export async function isNearRouteStart(routeId: string, lat: number, lng: number, radiusM = 500) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
   const { data, error } = await supabase.rpc("is_point_near_route_start", {
     p_route_id: routeId,
     p_lat: lat,
@@ -474,7 +474,7 @@ export async function isNearRouteStart(routeId: string, lat: number, lng: number
 }
 
 export async function listSpots() {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
   const { data, error } = await supabase
     .from("spots")
     .select("*, profiles!spots_created_by_fkey(username)")
@@ -489,7 +489,7 @@ export async function listSpots() {
 }
 
 export async function createSpot(userId: string, input: CreateSpotInput) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject("sumo");
 
   const payload = {
     created_by: userId,
@@ -512,3 +512,4 @@ export async function createSpot(userId: string, input: CreateSpotInput) {
 export function normalizeErrorMessage(error: unknown) {
   return asErrorMessage(error);
 }
+

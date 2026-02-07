@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   const token = (url.searchParams.get("token") ?? url.searchParams.get("order_id") ?? "").trim();
 
   if (token) {
-    const supabase = supabaseAdmin();
+    const supabase = supabaseAdmin("paypal");
     const { data: order } = await supabase
       .from("paypal_orders")
       .select("chat_id,paypal_order_id")
@@ -38,4 +38,5 @@ export async function GET(req: Request) {
 
   return NextResponse.redirect(`${getBotLink()}?start=cancel`, 302);
 }
+
 

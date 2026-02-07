@@ -63,7 +63,7 @@ async function createPayAndReply(chatId: number, itemKey: string) {
     brandName: envOrUndefined("PAYPAL_BRAND_NAME") ?? "Pago"
   });
 
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdmin("telegram");
   const { error } = await supabase.from("paypal_orders").insert({
     paypal_order_id: order.id,
     chat_id: chatId,
@@ -159,6 +159,7 @@ export async function POST(req: Request) {
     return apiJson(req, { ok: false, error: messageText }, { status: 500 });
   }
 }
+
 
 
 

@@ -65,7 +65,7 @@ export async function POST(req: Request) {
   console.log("[paypal] event", { eventType, orderId });
   if (!orderId) return apiJson(req, { ok: true, ignored: true, reason: "ORDER_NOT_FOUND" }, { status: 200 });
 
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdmin("paypal");
   const { data: order } = await supabase
     .from("paypal_orders")
     .select("id,paypal_order_id,chat_id,item_key,status,capture_id")
@@ -122,7 +122,7 @@ export async function POST(req: Request) {
     }
 
     await sendTelegramDocument(order.chat_id, item);
-    await sendTelegramMessage(order.chat_id, "Pago confirmado. Te he enviado el archivo. Â¡Gracias!");
+    await sendTelegramMessage(order.chat_id, "Pago confirmado. Te he enviado el archivo. Ã‚Â¡Gracias!");
     console.log("[paypal] fulfilled", { orderId, chatId: order.chat_id });
 
     await markStatus(supabase, orderId, {
@@ -142,6 +142,7 @@ export async function POST(req: Request) {
     return apiJson(req, { ok: false, error: message }, { status: 500 });
   }
 }
+
 
 
 

@@ -1,6 +1,7 @@
-﻿import { createClient, type Session } from "@supabase/supabase-js";
+import { createClient, type Session } from "@supabase/supabase-js";
 
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { supabaseAdminForProject } from "@/lib/supabaseAdmin";
+import { getSupabaseProjectEnv, requireSupabaseProjectEnv } from "@/lib/supabaseProjects";
 
 type AuthenticatedSumoUser = {
   id: string;
@@ -8,33 +9,29 @@ type AuthenticatedSumoUser = {
   accessToken: string;
 };
 
-function requireEnv(name: "SUPABASE_URL"): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing environment variable: ${name}`);
-  }
-  return value;
-}
+const SUMO_PROJECT = "sumo" as const;
 
-function getSupabaseAuthKey(): string {
-  const anon = process.env.SUPABASE_ANON_KEY;
+function getSumoAuthKey(): string {
+  const anon = getSupabaseProjectEnv(SUMO_PROJECT, "anon");
   if (anon) {
     return anon;
   }
 
-  const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const service = getSupabaseProjectEnv(SUMO_PROJECT, "serviceRole");
   if (service) {
     return service;
   }
 
-  throw new Error("Missing environment variable: SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY");
+  throw new Error(
+    "Missing Supabase auth key for project \"sumo\". Expected SUPABASE_SUMO_ANON_KEY (or SUPABASE_ANON_KEY_SUMO)."
+  );
 }
 
 let authClient: ReturnType<typeof createClient> | null = null;
 
 function getAuthClient() {
   if (!authClient) {
-    authClient = createClient(requireEnv("SUPABASE_URL"), getSupabaseAuthKey(), {
+    authClient = createClient(requireSupabaseProjectEnv(SUMO_PROJECT, "url"), getSumoAuthKey(), {
       auth: {
         persistSession: false,
         autoRefreshToken: false
@@ -69,7 +66,7 @@ export async function requireSumoUser(req: Request): Promise<AuthenticatedSumoUs
     throw new Error("UNAUTHORIZED");
   }
 
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject(SUMO_PROJECT);
   const { data, error } = await supabase.auth.getUser(accessToken);
   if (error || !data.user) {
     throw new Error("UNAUTHORIZED");
@@ -161,7 +158,7 @@ export async function registerWithPassword(input: {
 }
 
 export async function logoutByToken(accessToken: string) {
-  const supabase = supabaseAdmin();
+  const supabase = supabaseAdminForProject(SUMO_PROJECT);
   const adminAuth = supabase.auth.admin as unknown as {
     signOut?: (jwt: string, scope?: "global" | "local" | "others") => Promise<{ error: { message?: string } | null }>;
   };
