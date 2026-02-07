@@ -1,4 +1,4 @@
-import type { NextRequest } from "next/server";
+﻿import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 function isAllowedOrigin(req: NextRequest, origin: string): boolean {
@@ -10,6 +10,29 @@ function isAllowedOrigin(req: NextRequest, origin: string): boolean {
   } catch {
     return false;
   }
+}
+
+function getClientIp(req: NextRequest): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  );
+}
+
+function logApiRequest(req: NextRequest): void {
+  const requestId = crypto.randomUUID().slice(0, 8);
+  const ip = getClientIp(req);
+  const ua = req.headers.get("user-agent") || "unknown";
+
+  console.log("[API] [IN]", {
+    requestId,
+    method: req.method,
+    path: req.nextUrl.pathname,
+    query: req.nextUrl.search,
+    ip,
+    ua
+  });
 }
 
 function withApiHeaders(res: NextResponse, req: NextRequest): NextResponse {
@@ -33,6 +56,9 @@ function withApiHeaders(res: NextResponse, req: NextRequest): NextResponse {
 
 export function middleware(req: NextRequest) {
   if (!req.nextUrl.pathname.startsWith("/api/")) return NextResponse.next();
+
+  logApiRequest(req);
+
   // Avoid cloning large multipart bodies for upload endpoint.
   if (req.nextUrl.pathname === "/api/upload") return NextResponse.next();
 
