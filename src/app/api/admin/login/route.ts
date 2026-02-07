@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import bcrypt from "bcryptjs";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { signAdminToken } from "@/lib/adminSession";
@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => null)) as { password?: unknown } | null;
     const password = typeof body?.password === "string" ? body.password : "";
-    if (!password) return NextResponse.json({ ok: false, error: "MISSING_PASSWORD" }, { status: 400 });
+    if (!password) return apiJson(req, { ok: false, error: "MISSING_PASSWORD" }, { status: 400 });
 
     const supabase = supabaseAdmin();
     const { data, error } = await supabase
@@ -20,16 +20,16 @@ export async function POST(req: Request) {
       .eq("id", true)
       .maybeSingle<AdminSettingsRow>();
 
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    if (error) return apiJson(req, { ok: false, error: error.message }, { status: 500 });
     if (!data?.admin_password_hash) {
-      return NextResponse.json({ ok: false, error: "ADMIN_NOT_CONFIGURED" }, { status: 500 });
+      return apiJson(req, { ok: false, error: "ADMIN_NOT_CONFIGURED" }, { status: 500 });
     }
 
     const ok = await bcrypt.compare(password, data.admin_password_hash);
-    if (!ok) return NextResponse.json({ ok: false, error: "INVALID_PASSWORD" }, { status: 401 });
+    if (!ok) return apiJson(req, { ok: false, error: "INVALID_PASSWORD" }, { status: 401 });
 
     const token = signAdminToken();
-    const res = NextResponse.json({ ok: true });
+    const res = apiJson(req, { ok: true });
     res.cookies.set({
       name: "adm",
       value: token,
@@ -42,7 +42,8 @@ export async function POST(req: Request) {
     return res;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return apiJson(req, { ok: false, error: message }, { status: 500 });
   }
 }
+
 

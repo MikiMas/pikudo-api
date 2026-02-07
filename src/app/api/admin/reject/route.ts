@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { validateUuid } from "@/lib/validators";
 
@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as { playerChallengeId?: unknown } | null;
   const id = body?.playerChallengeId;
   if (!validateUuid(id)) {
-    return NextResponse.json({ ok: false, error: "INVALID_PLAYER_CHALLENGE_ID" }, { status: 400 });
+    return apiJson(req, { ok: false, error: "INVALID_PLAYER_CHALLENGE_ID" }, { status: 400 });
   }
 
   const supabase = supabaseAdmin();
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   if (error) {
     const msg = error.message || "RPC_FAILED";
     if (msg.toLowerCase().includes("reject_player_challenge")) {
-      return NextResponse.json(
+      return apiJson(req, 
         {
           ok: false,
           error: "MISSING_RPC_REJECT",
@@ -30,12 +30,13 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    return apiJson(req, { ok: false, error: msg }, { status: 500 });
   }
 
   const row = data?.[0];
-  if (!row) return NextResponse.json({ ok: false, error: "REJECT_FAILED" }, { status: 500 });
+  if (!row) return apiJson(req, { ok: false, error: "REJECT_FAILED" }, { status: 500 });
 
-  return NextResponse.json({ ok: true, points: row.points, rejectedNow: row.rejected_now, playerId: row.player_id });
+  return apiJson(req, { ok: true, points: row.points, rejectedNow: row.rejected_now, playerId: row.player_id });
 }
+
 

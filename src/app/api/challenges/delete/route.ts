@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromDevice } from "@/lib/sessionPlayer";
 import { validateUuid } from "@/lib/validators";
@@ -35,13 +35,13 @@ export async function POST(req: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
     const status = msg === "UNAUTHORIZED" ? 401 : 500;
-    return NextResponse.json({ ok: false, error: msg }, { status });
+    return apiJson(req, { ok: false, error: msg }, { status });
   }
 
   const body = await req.json().catch(() => null);
   const playerChallengeId = body?.playerChallengeId;
   if (!validateUuid(playerChallengeId)) {
-    return NextResponse.json({ ok: false, error: "INVALID_PLAYER_CHALLENGE_ID" }, { status: 400 });
+    return apiJson(req, { ok: false, error: "INVALID_PLAYER_CHALLENGE_ID" }, { status: 400 });
   }
 
   const supabase = supabaseAdmin();
@@ -51,9 +51,9 @@ export async function POST(req: Request) {
     .eq("id", String(playerChallengeId))
     .maybeSingle<PlayerChallengeRow>();
 
-  if (pcError) return NextResponse.json({ ok: false, error: pcError.message }, { status: 500 });
+  if (pcError) return apiJson(req, { ok: false, error: pcError.message }, { status: 500 });
   if (!pc || pc.player_id !== playerId) {
-    return NextResponse.json({ ok: false, error: "NOT_ALLOWED" }, { status: 403 });
+    return apiJson(req, { ok: false, error: "NOT_ALLOWED" }, { status: 403 });
   }
 
   const { data: rejected, error: rejectError } = (await supabase.rpc("reject_player_challenge", {
@@ -61,14 +61,14 @@ export async function POST(req: Request) {
   })) as { data: { player_id: string; points: number; rejected_now: boolean }[] | null; error: { message: string } | null };
 
   if (rejectError) {
-    return NextResponse.json({ ok: false, error: rejectError.message }, { status: 500 });
+    return apiJson(req, { ok: false, error: rejectError.message }, { status: 500 });
   }
 
   const pathFromUrl = pc.media_url ? getStoragePath(pc.media_url) : null;
   if (pathFromUrl) {
     const { error: removeError } = await supabase.storage.from(BUCKET).remove([pathFromUrl]);
     if (removeError) {
-      return NextResponse.json({ ok: false, error: removeError.message }, { status: 500 });
+      return apiJson(req, { ok: false, error: removeError.message }, { status: 500 });
     }
   }
 
@@ -82,8 +82,9 @@ export async function POST(req: Request) {
     })
     .eq("id", pc.id);
 
-  if (updateError) return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
+  if (updateError) return apiJson(req, { ok: false, error: updateError.message }, { status: 500 });
 
   const row = (rejected ?? [])[0] ?? null;
-  return NextResponse.json({ ok: true, points: row?.points ?? null, rejectedNow: row?.rejected_now ?? false });
+  return apiJson(req, { ok: true, points: row?.points ?? null, rejectedNow: row?.rejected_now ?? false });
 }
+

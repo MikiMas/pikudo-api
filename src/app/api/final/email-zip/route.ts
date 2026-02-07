@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromDevice } from "@/lib/sessionPlayer";
 import { createZipStore } from "@/lib/zip";
@@ -86,22 +86,22 @@ export async function POST(req: Request) {
     deviceId = authed.deviceId;
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
-    return NextResponse.json({ ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
+    return apiJson(req, { ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
   }
 
   const body = (await req.json().catch(() => null)) as { email?: unknown } | null;
   const email = typeof body?.email === "string" ? body.email.trim() : "";
-  if (!isValidEmail(email)) return NextResponse.json({ ok: false, error: "INVALID_EMAIL" }, { status: 400 });
+  if (!isValidEmail(email)) return apiJson(req, { ok: false, error: "INVALID_EMAIL" }, { status: 400 });
 
   cleanupAttemptsMap();
   const attempts = attemptsByDevice.get(deviceId) ?? 0;
-  if (attempts >= MAX_ATTEMPTS) return NextResponse.json({ ok: false, error: "TOO_MANY_ATTEMPTS" }, { status: 429 });
+  if (attempts >= MAX_ATTEMPTS) return apiJson(req, { ok: false, error: "TOO_MANY_ATTEMPTS" }, { status: 429 });
 
   const ended = await isRoomEnded(supabase, roomId);
-  if (!ended) return NextResponse.json({ ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
+  if (!ended) return apiJson(req, { ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
 
   const webhookUrl = process.env.EMAIL_ZIP_WEBHOOK_URL ?? "";
-  if (!webhookUrl) return NextResponse.json({ ok: false, error: "EMAIL_NOT_CONFIGURED" }, { status: 500 });
+  if (!webhookUrl) return apiJson(req, { ok: false, error: "EMAIL_NOT_CONFIGURED" }, { status: 500 });
 
   const { data: room } = await supabase.from("rooms").select("code").eq("id", roomId).maybeSingle<{ code: string }>();
 
@@ -112,9 +112,9 @@ export async function POST(req: Request) {
     .limit(500)
     .returns<RoomMemberRow[]>();
 
-  if (membersError) return NextResponse.json({ ok: false, error: membersError.message }, { status: 500 });
+  if (membersError) return apiJson(req, { ok: false, error: membersError.message }, { status: 500 });
   const playerIds = (members ?? []).map((m) => m.player_id);
-  if (playerIds.length === 0) return NextResponse.json({ ok: false, error: "NO_PLAYERS" }, { status: 404 });
+  if (playerIds.length === 0) return apiJson(req, { ok: false, error: "NO_PLAYERS" }, { status: 404 });
 
   const { data: playersInRoom, error: playersError } = await supabase
     .from("players")
@@ -122,7 +122,7 @@ export async function POST(req: Request) {
     .in("id", playerIds)
     .returns<PlayerRow[]>();
 
-  if (playersError) return NextResponse.json({ ok: false, error: playersError.message }, { status: 500 });
+  if (playersError) return apiJson(req, { ok: false, error: playersError.message }, { status: 500 });
 
   const { data: mediaRows, error: mediaError } =
     playerIds.length === 0
@@ -134,10 +134,10 @@ export async function POST(req: Request) {
           .eq("completed", true)
           .returns<MediaRow[]>();
 
-  if (mediaError) return NextResponse.json({ ok: false, error: mediaError.message }, { status: 500 });
+  if (mediaError) return apiJson(req, { ok: false, error: mediaError.message }, { status: 500 });
 
   const images = (mediaRows ?? []).filter((r) => r.media_type === "image" && typeof r.media_url === "string" && r.media_url);
-  if (images.length === 0) return NextResponse.json({ ok: false, error: "NO_IMAGES" }, { status: 404 });
+  if (images.length === 0) return apiJson(req, { ok: false, error: "NO_IMAGES" }, { status: 404 });
 
   const nickById = new Map((playersInRoom ?? []).map((p) => [p.id, p.nickname]));
   for (const m of members ?? []) {
@@ -165,7 +165,7 @@ export async function POST(req: Request) {
     files.push({ name: filename, data: buf });
   }
 
-  if (files.length === 0) return NextResponse.json({ ok: false, error: "NO_DOWNLOADABLE_IMAGES" }, { status: 404 });
+  if (files.length === 0) return apiJson(req, { ok: false, error: "NO_DOWNLOADABLE_IMAGES" }, { status: 404 });
 
   const zipBytes = createZipStore(files);
   const zipBase64 = Buffer.from(zipBytes).toString("base64");
@@ -180,18 +180,19 @@ export async function POST(req: Request) {
     },
     body: JSON.stringify({
       to: email,
-      subject: "PIKUDO - Imágenes de la partida",
-      text: "Adjunto tienes el ZIP con las imágenes de la partida.",
+      subject: "PIKUDO - ImÃ¡genes de la partida",
+      text: "Adjunto tienes el ZIP con las imÃ¡genes de la partida.",
       attachment: { filename: zipName, mime: "application/zip", contentBase64: zipBase64 }
     })
   });
 
   if (!hookRes.ok) {
     const errText = await hookRes.text().catch(() => "");
-    return NextResponse.json({ ok: false, error: `EMAIL_SEND_FAILED${errText ? `: ${errText}` : ""}` }, { status: 502 });
+    return apiJson(req, { ok: false, error: `EMAIL_SEND_FAILED${errText ? `: ${errText}` : ""}` }, { status: 502 });
   }
 
   attemptsByDevice.set(deviceId, attempts + 1);
 
-  return NextResponse.json({ ok: true, sentTo: email });
+  return apiJson(req, { ok: true, sentTo: email });
 }
+

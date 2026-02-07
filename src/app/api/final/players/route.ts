@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/lib/sessionPlayer";
 
@@ -51,11 +51,11 @@ export async function GET(req: Request) {
     roomId = player.room_id;
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
-    return NextResponse.json({ ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
+    return apiJson(req, { ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
   }
 
   const ended = await isRoomEnded(supabase, roomId);
-  if (!ended) return NextResponse.json({ ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
+  if (!ended) return apiJson(req, { ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
 
   const { data: members, error: membersError } = await supabase
     .from("room_members")
@@ -64,10 +64,10 @@ export async function GET(req: Request) {
     .limit(500)
     .returns<RoomMemberRow[]>();
 
-  if (membersError) return NextResponse.json({ ok: false, error: membersError.message }, { status: 500 });
+  if (membersError) return apiJson(req, { ok: false, error: membersError.message }, { status: 500 });
 
   const ids = (members ?? []).map((m) => m.player_id);
-  if (ids.length === 0) return NextResponse.json({ ok: true, players: [] });
+  if (ids.length === 0) return apiJson(req, { ok: true, players: [] });
 
   const { data: players, error: playersError } = await supabase
     .from("players")
@@ -75,7 +75,7 @@ export async function GET(req: Request) {
     .in("id", ids)
     .returns<PlayerRow[]>();
 
-  if (playersError) return NextResponse.json({ ok: false, error: playersError.message }, { status: 500 });
+  if (playersError) return apiJson(req, { ok: false, error: playersError.message }, { status: 500 });
 
   const playerById = new Map((players ?? []).map((p) => [p.id, p]));
   const counts = new Map<string, number>();
@@ -87,7 +87,7 @@ export async function GET(req: Request) {
       .eq("completed", true)
       .not("media_url", "is", null)
       .limit(4000);
-    if (rowsError) return NextResponse.json({ ok: false, error: rowsError.message }, { status: 500 });
+    if (rowsError) return apiJson(req, { ok: false, error: rowsError.message }, { status: 500 });
     for (const row of rows ?? []) {
       const pid = String((row as any).player_id ?? "");
       if (!pid) continue;
@@ -114,8 +114,9 @@ export async function GET(req: Request) {
     return String(a.joinedAt).localeCompare(String(b.joinedAt));
   });
 
-  return NextResponse.json({
+  return apiJson(req, {
     ok: true,
     players: payload.map(({ joinedAt, ...rest }) => rest)
   });
 }
+

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createOrder } from "@/paypal/client";
 import { getCatalogItem, getDefaultItemKey, listCatalogKeys, requireCatalogItem } from "@/paypal/catalog";
@@ -82,7 +82,7 @@ async function createPayAndReply(chatId: number, itemKey: string) {
 export async function POST(req: Request) {
   if (!isValidTelegramSecret(req)) {
     console.warn("[telegram] invalid webhook secret");
-    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    return apiJson(req, { ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
   const update = (await req.json().catch(() => null)) as TelegramUpdate | null;
@@ -108,20 +108,20 @@ export async function POST(req: Request) {
     console.log("[telegram] callback item", { chatId: callbackChatId, itemKey });
     if (!getCatalogItem(itemKey)) {
       await sendTelegramMessage(callbackChatId, `Producto no valido. ${formatCatalogList()}`);
-      return NextResponse.json({ ok: true }, { status: 200 });
+      return apiJson(req, { ok: true }, { status: 200 });
     }
 
     try {
       await createPayAndReply(callbackChatId, itemKey);
-      return NextResponse.json({ ok: true }, { status: 200 });
+      return apiJson(req, { ok: true }, { status: 200 });
     } catch (err) {
       const messageText = err instanceof Error ? err.message : "ERROR";
       await sendTelegramMessage(callbackChatId, `Ahora mismo no puedo crear el pago: ${messageText}`);
-      return NextResponse.json({ ok: false, error: messageText }, { status: 500 });
+      return apiJson(req, { ok: false, error: messageText }, { status: 500 });
     }
   }
 
-  if (!chatId) return NextResponse.json({ ok: true }, { status: 200 });
+  if (!chatId) return apiJson(req, { ok: true }, { status: 200 });
 
   if (!text || text === "/start") {
     const options = getCatalogOptions();
@@ -131,7 +131,7 @@ export async function POST(req: Request) {
     } else {
       await sendTelegramMessage(chatId, `Hola! Envia el nombre del producto. ${formatCatalogList()}`);
     }
-    return NextResponse.json({ ok: true }, { status: 200 });
+    return apiJson(req, { ok: true }, { status: 200 });
   }
 
   try {
@@ -139,22 +139,23 @@ export async function POST(req: Request) {
     console.log("[telegram] text flow", { chatId, itemKey, text });
     if (!itemKey) {
       await sendTelegramMessage(chatId, `Indica el producto. Ejemplo: "algo". ${formatCatalogList()}`);
-      return NextResponse.json({ ok: true }, { status: 200 });
+      return apiJson(req, { ok: true }, { status: 200 });
     }
 
     const item = getCatalogItem(itemKey);
     if (!item) {
       await sendTelegramMessage(chatId, `Producto no valido. ${formatCatalogList()}`);
-      return NextResponse.json({ ok: true }, { status: 200 });
+      return apiJson(req, { ok: true }, { status: 200 });
     }
 
     await createPayAndReply(chatId, itemKey);
     console.log("[telegram] order created", { chatId, itemKey });
-    return NextResponse.json({ ok: true }, { status: 200 });
+    return apiJson(req, { ok: true }, { status: 200 });
   } catch (err) {
     const messageText = err instanceof Error ? err.message : "ERROR";
     console.error("[telegram] error", messageText);
     await sendTelegramMessage(chatId, `Ahora mismo no puedo crear el pago: ${messageText}`);
-    return NextResponse.json({ ok: false, error: messageText }, { status: 500 });
+    return apiJson(req, { ok: false, error: messageText }, { status: 500 });
   }
 }
+

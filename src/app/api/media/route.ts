@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { validateUuid } from "@/lib/validators";
 import { requirePlayerFromDevice } from "@/lib/sessionPlayer";
@@ -17,13 +17,13 @@ export async function GET(req: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
     const status = msg === "UNAUTHORIZED" ? 401 : 500;
-    return NextResponse.json({ ok: false, error: msg }, { status });
+    return apiJson(req, { ok: false, error: msg }, { status });
   }
 
   const url = new URL(req.url);
   const playerChallengeId = url.searchParams.get("playerChallengeId");
   if (!validateUuid(playerChallengeId)) {
-    return NextResponse.json({ ok: false, error: "INVALID_PLAYER_CHALLENGE_ID" }, { status: 400 });
+    return apiJson(req, { ok: false, error: "INVALID_PLAYER_CHALLENGE_ID" }, { status: 400 });
   }
 
   const supabase = supabaseAdmin();
@@ -33,13 +33,14 @@ export async function GET(req: Request) {
     .eq("id", playerChallengeId.trim())
     .maybeSingle<PlayerChallengeRow>();
 
-  if (pcError) return NextResponse.json({ ok: false, error: pcError.message }, { status: 500 });
-  if (!pc || pc.player_id !== playerId) return NextResponse.json({ ok: false, error: "NOT_ALLOWED" }, { status: 403 });
-  if (!pc.media_path) return NextResponse.json({ ok: false, error: "NO_MEDIA" }, { status: 404 });
+  if (pcError) return apiJson(req, { ok: false, error: pcError.message }, { status: 500 });
+  if (!pc || pc.player_id !== playerId) return apiJson(req, { ok: false, error: "NOT_ALLOWED" }, { status: 403 });
+  if (!pc.media_path) return apiJson(req, { ok: false, error: "NO_MEDIA" }, { status: 404 });
 
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(pc.media_path, 60 * 10);
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (error) return apiJson(req, { ok: false, error: error.message }, { status: 500 });
 
-  return NextResponse.json({ ok: true, url: data.signedUrl, mime: pc.media_mime });
+  return apiJson(req, { ok: true, url: data.signedUrl, mime: pc.media_mime });
 }
+
 

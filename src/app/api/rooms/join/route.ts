@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { validateNickname, validateRoomCode } from "@/lib/validators";
 import { requirePlayerFromDevice } from "@/lib/sessionPlayer";
@@ -12,12 +12,12 @@ type PlayerRow = { id: string; nickname: string; points: number };
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as JoinBody | null;
   const code = body?.code;
-  if (!validateRoomCode(code)) return NextResponse.json({ ok: false, error: "INVALID_ROOM_CODE" }, { status: 400 });
+  if (!validateRoomCode(code)) return apiJson(req, { ok: false, error: "INVALID_ROOM_CODE" }, { status: 400 });
 
   const supabase = supabaseAdmin();
   const { data: room, error: roomError } = await supabase.from("rooms").select("id,code,starts_at,ends_at").eq("code", code).maybeSingle<RoomRow>();
-  if (roomError) return NextResponse.json({ ok: false, error: roomError.message }, { status: 500 });
-  if (!room) return NextResponse.json({ ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
+  if (roomError) return apiJson(req, { ok: false, error: roomError.message }, { status: 500 });
+  if (!room) return apiJson(req, { ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
 
   let devicePlayerId = "";
   let deviceNickname = "";
@@ -31,11 +31,11 @@ export async function POST(req: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
     const status = msg === "UNAUTHORIZED" ? 401 : 500;
-    return NextResponse.json({ ok: false, error: msg }, { status });
+    return apiJson(req, { ok: false, error: msg }, { status });
   }
 
   if (deviceRoomId) {
-    return NextResponse.json({ ok: false, error: "ALREADY_IN_ROOM" }, { status: 409 });
+    return apiJson(req, { ok: false, error: "ALREADY_IN_ROOM" }, { status: 409 });
   }
 
   const nick = validateNickname(body?.nickname);
@@ -50,8 +50,8 @@ export async function POST(req: Request) {
 
   if (updateError) {
     const pgCode = (updateError as any).code as string | undefined;
-    if (pgCode === "23505") return NextResponse.json({ ok: false, error: "NICKNAME_TAKEN" }, { status: 409 });
-    return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
+    if (pgCode === "23505") return apiJson(req, { ok: false, error: "NICKNAME_TAKEN" }, { status: 409 });
+    return apiJson(req, { ok: false, error: updateError.message }, { status: 500 });
   }
 
   await supabase.from("room_members").upsert({
@@ -62,5 +62,6 @@ export async function POST(req: Request) {
     points_at_leave: null,
     nickname_at_join: updated.nickname
   });
-  return NextResponse.json({ ok: true, room: { id: room.id, code: room.code }, player: updated });
+  return apiJson(req, { ok: true, room: { id: room.id, code: room.code }, player: updated });
 }
+

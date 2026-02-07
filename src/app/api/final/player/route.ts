@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/lib/sessionPlayer";
 import { validateUuid } from "@/lib/validators";
@@ -53,7 +53,7 @@ async function isRoomEnded(supabase: ReturnType<typeof supabaseAdmin>, roomId: s
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const playerId = url.searchParams.get("playerId");
-  if (!validateUuid(playerId)) return NextResponse.json({ ok: false, error: "INVALID_PLAYER_ID" }, { status: 400 });
+  if (!validateUuid(playerId)) return apiJson(req, { ok: false, error: "INVALID_PLAYER_ID" }, { status: 400 });
 
   const supabase = supabaseAdmin();
   let roomId = "";
@@ -62,11 +62,11 @@ export async function GET(req: Request) {
     roomId = player.room_id;
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
-    return NextResponse.json({ ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
+    return apiJson(req, { ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
   }
 
   const ended = await isRoomEnded(supabase, roomId);
-  if (!ended) return NextResponse.json({ ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
+  if (!ended) return apiJson(req, { ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
 
   const { data: member, error: memberError } = await supabase
     .from("room_members")
@@ -75,8 +75,8 @@ export async function GET(req: Request) {
     .eq("player_id", playerId!.trim())
     .maybeSingle<RoomMemberRow>();
 
-  if (memberError) return NextResponse.json({ ok: false, error: memberError.message }, { status: 500 });
-  if (!member) return NextResponse.json({ ok: false, error: "NOT_ALLOWED" }, { status: 403 });
+  if (memberError) return apiJson(req, { ok: false, error: memberError.message }, { status: 500 });
+  if (!member) return apiJson(req, { ok: false, error: "NOT_ALLOWED" }, { status: 403 });
 
   const { data: player, error: playerError } = await supabase
     .from("players")
@@ -84,9 +84,9 @@ export async function GET(req: Request) {
     .eq("id", playerId!.trim())
     .maybeSingle<PlayerRow>();
 
-  if (playerError) return NextResponse.json({ ok: false, error: playerError.message }, { status: 500 });
-  if (!player) return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
-  if (member.player_id !== player.id) return NextResponse.json({ ok: false, error: "NOT_ALLOWED" }, { status: 403 });
+  if (playerError) return apiJson(req, { ok: false, error: playerError.message }, { status: 500 });
+  if (!player) return apiJson(req, { ok: false, error: "NOT_FOUND" }, { status: 404 });
+  if (member.player_id !== player.id) return apiJson(req, { ok: false, error: "NOT_ALLOWED" }, { status: 403 });
 
   const { data: rows, error: rowsError } = await supabase
     .from("player_challenges")
@@ -97,7 +97,7 @@ export async function GET(req: Request) {
     .limit(200)
     .returns<CompletedRow[]>();
 
-  if (rowsError) return NextResponse.json({ ok: false, error: rowsError.message }, { status: 500 });
+  if (rowsError) return apiJson(req, { ok: false, error: rowsError.message }, { status: 500 });
 
   const completed = (rows ?? [])
     .filter((r) => Boolean(r.media_url))
@@ -113,5 +113,6 @@ export async function GET(req: Request) {
   const nickname = member.nickname_at_join ?? player.nickname;
   const points = member.points_at_leave ?? player.points ?? 0;
 
-  return NextResponse.json({ ok: true, player: { id: player.id, nickname, points }, completed });
+  return apiJson(req, { ok: true, player: { id: player.id, nickname, points }, completed });
 }
+

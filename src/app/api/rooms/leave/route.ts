@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/lib/sessionPlayer";
 
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
     const status = msg === "UNAUTHORIZED" ? 401 : 500;
-    return NextResponse.json({ ok: false, error: msg }, { status });
+    return apiJson(req, { ok: false, error: msg }, { status });
   }
 
   const supabase = supabaseAdmin();
@@ -36,5 +36,6 @@ export async function POST(req: Request) {
   // Keep session + player identity; only detach from the room.
   await supabase.from("players").update({ room_id: null }).eq("id", playerId);
 
-  return NextResponse.json({ ok: true });
+  return apiJson(req, { ok: true });
 }
+

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/lib/sessionPlayer";
 import { getBlockStartFromAnchor, secondsToNextBlockFromAnchor } from "@/lib/timeBlock";
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
     const status = msg === "UNAUTHORIZED" ? 401 : 500;
-    return NextResponse.json({ ok: false, error: msg }, { status });
+    return apiJson(req, { ok: false, error: msg }, { status });
   }
 
   const now = new Date();
@@ -32,11 +32,11 @@ export async function GET(req: Request) {
     .select("id,starts_at,ends_at,status,rounds")
     .eq("id", roomId)
     .maybeSingle<{ id: string; starts_at: string; ends_at: string; status: string }>();
-  if (roomError || !room) return NextResponse.json({ ok: false, error: roomError?.message ?? "ROOM_NOT_FOUND" }, { status: 500 });
+  if (roomError || !room) return apiJson(req, { ok: false, error: roomError?.message ?? "ROOM_NOT_FOUND" }, { status: 500 });
 
   const roomStatus = String((room as any)?.status ?? "").toLowerCase();
   if (roomStatus === "ended") {
-    return NextResponse.json({ paused: false, state: "ended", blockStart: now.toISOString(), nextBlockInSec: 0 });
+    return apiJson(req, { paused: false, state: "ended", blockStart: now.toISOString(), nextBlockInSec: 0 });
   }
 
   const { data: settings } = await supabase
@@ -50,14 +50,14 @@ export async function GET(req: Request) {
   const effectiveStartedAtIso = startedAtIso ?? startedAtFallback;
 
   if (!effectiveStartedAtIso) {
-    return NextResponse.json({ paused: false, state: "scheduled", blockStart: new Date().toISOString(), nextBlockInSec: 0 });
+    return apiJson(req, { paused: false, state: "scheduled", blockStart: new Date().toISOString(), nextBlockInSec: 0 });
   }
 
   const startedAt = new Date(effectiveStartedAtIso);
   const rounds = Math.min(10, Math.max(1, Math.floor((room as any).rounds ?? 1)));
   const endsAt = new Date(startedAt.getTime() + rounds * 30 * 60 * 1000);
   if (now.getTime() >= endsAt.getTime()) {
-    return NextResponse.json({ paused: false, state: "ended", blockStart: endsAt.toISOString(), nextBlockInSec: 0 });
+    return apiJson(req, { paused: false, state: "ended", blockStart: endsAt.toISOString(), nextBlockInSec: 0 });
   }
 
   const blockStart = getBlockStartFromAnchor(now, startedAt);
@@ -74,7 +74,7 @@ export async function GET(req: Request) {
   if (assignError) {
     const msg = assignError.message || "RPC_FAILED";
     if (msg.toLowerCase().includes("assign_challenges_for_block")) {
-      return NextResponse.json(
+      return apiJson(req, 
         {
           ok: false,
           error: "MISSING_RPC_ASSIGN_CHALLENGES",
@@ -83,7 +83,7 @@ export async function GET(req: Request) {
         { status: 500 }
       );
     }
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    return apiJson(req, { ok: false, error: msg }, { status: 500 });
   }
 
   const ids = (assigned ?? []).map((c) => c.player_challenge_id);
@@ -98,7 +98,7 @@ export async function GET(req: Request) {
     ])
   );
 
-  return NextResponse.json({
+  return apiJson(req, {
     paused: false,
     blockStart: blockStart.toISOString(),
     nextBlockInSec,
@@ -112,3 +112,4 @@ export async function GET(req: Request) {
     }))
   });
 }
+

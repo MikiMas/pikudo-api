@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { validateUuid } from "@/lib/validators";
 
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const playerId = url.searchParams.get("playerId");
   if (!validateUuid(playerId)) {
-    return NextResponse.json({ ok: false, error: "INVALID_PLAYER_ID" }, { status: 400 });
+    return apiJson(req, { ok: false, error: "INVALID_PLAYER_ID" }, { status: 400 });
   }
 
   const supabase = supabaseAdmin();
@@ -29,8 +29,8 @@ export async function GET(req: Request) {
     .eq("id", playerId.trim())
     .maybeSingle<PlayerRow>();
 
-  if (playerError) return NextResponse.json({ ok: false, error: playerError.message }, { status: 500 });
-  if (!player) return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+  if (playerError) return apiJson(req, { ok: false, error: playerError.message }, { status: 500 });
+  if (!player) return apiJson(req, { ok: false, error: "NOT_FOUND" }, { status: 404 });
 
   const { data: rows, error: rowsError } = await supabase
     .from("player_challenges")
@@ -41,16 +41,17 @@ export async function GET(req: Request) {
     .limit(200)
     .returns<CompletedRow[]>();
 
-  if (rowsError) return NextResponse.json({ ok: false, error: rowsError.message }, { status: 500 });
+  if (rowsError) return apiJson(req, { ok: false, error: rowsError.message }, { status: 500 });
 
   const completed = (rows ?? []).map((r) => ({
     id: r.id,
-    title: r.challenges?.title ?? "(sin título)",
+    title: r.challenges?.title ?? "(sin tÃ­tulo)",
     description: r.challenges?.description ?? "",
     completedAt: r.completed_at,
     blockStart: r.block_start,
     media: r.media_url ? { path: r.media_url, mime: r.media_mime ?? "", url: r.media_url } : null
   }));
 
-  return NextResponse.json({ ok: true, player, completed });
+  return apiJson(req, { ok: true, player, completed });
 }
+

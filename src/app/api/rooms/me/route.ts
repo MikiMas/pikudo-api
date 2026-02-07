@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/lib/sessionPlayer";
 
@@ -15,8 +15,8 @@ export async function GET(req: Request) {
       .eq("id", player.room_id)
       .maybeSingle();
 
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-    if (!room) return NextResponse.json({ ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
+    if (error) return apiJson(req, { ok: false, error: error.message }, { status: 500 });
+    if (!room) return apiJson(req, { ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
 
     const { data: member } = await supabase
       .from("room_members")
@@ -25,11 +25,12 @@ export async function GET(req: Request) {
       .eq("player_id", player.id)
       .maybeSingle<{ role: string }>();
 
-    return NextResponse.json({ ok: true, room, role: member?.role ?? "member", player });
+    return apiJson(req, { ok: true, room, role: member?.role ?? "member", player });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
     const status = msg === "UNAUTHORIZED" ? 401 : 500;
-    return NextResponse.json({ ok: false, error: msg }, { status });
+    return apiJson(req, { ok: false, error: msg }, { status });
   }
 }
+
 

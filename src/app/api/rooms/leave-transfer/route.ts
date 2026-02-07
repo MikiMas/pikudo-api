@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/lib/sessionPlayer";
 
@@ -21,8 +21,8 @@ export async function POST(req: Request) {
       .eq("player_id", playerId)
       .maybeSingle<{ room_id: string; role: string }>();
 
-    if (!member?.room_id) return NextResponse.json({ ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
-    if (member.role !== "owner") return NextResponse.json({ ok: false, error: "NOT_ALLOWED" }, { status: 403 });
+    if (!member?.room_id) return apiJson(req, { ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
+    if (member.role !== "owner") return apiJson(req, { ok: false, error: "NOT_ALLOWED" }, { status: 403 });
 
     const roomId = member.room_id;
 
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       await supabase.from("room_settings").delete().eq("room_id", roomId);
       await supabase.from("rooms").delete().eq("id", roomId);
 
-      return NextResponse.json({ ok: true, closed: true });
+      return apiJson(req, { ok: true, closed: true });
     }
 
     const nowIso = new Date().toISOString();
@@ -60,10 +60,11 @@ export async function POST(req: Request) {
     // Detach player from room (keep device identity).
     await supabase.from("players").update({ room_id: null, nickname: playerNickname }).eq("id", playerId);
 
-    return NextResponse.json({ ok: true, newOwnerId: nextOwner.id });
+    return apiJson(req, { ok: true, newOwnerId: nextOwner.id });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
     const status = msg === "UNAUTHORIZED" ? 401 : 500;
-    return NextResponse.json({ ok: false, error: msg }, { status });
+    return apiJson(req, { ok: false, error: msg }, { status });
   }
 }
+

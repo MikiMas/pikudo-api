@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getCatalogItem } from "@/paypal/catalog";
 import {
@@ -42,27 +42,27 @@ export async function POST(req: Request) {
     const raw = await req.text();
     event = JSON.parse(raw) as PayPalWebhookEvent;
   } catch {
-    return NextResponse.json({ ok: false, error: "INVALID_JSON" }, { status: 400 });
+    return apiJson(req, { ok: false, error: "INVALID_JSON" }, { status: 400 });
   }
 
   const eventType = typeof event?.event_type === "string" ? event.event_type : "";
   const acceptedTypes = getAcceptedEventTypes();
   if (!acceptedTypes.has(eventType)) {
     console.log("[paypal] ignored event", { eventType });
-    return NextResponse.json({ ok: true, ignored: true, eventType }, { status: 200 });
+    return apiJson(req, { ok: true, ignored: true, eventType }, { status: 200 });
   }
 
   const verified = await verifyWebhookSignature(event, req.headers);
   if (!verified) console.warn("[paypal] webhook not verified");
-  if (!verified) return NextResponse.json({ ok: false, error: "WEBHOOK_NOT_VERIFIED" }, { status: 400 });
+  if (!verified) return apiJson(req, { ok: false, error: "WEBHOOK_NOT_VERIFIED" }, { status: 400 });
 
   if (eventType === "PAYMENT.CAPTURE.COMPLETED" && !isCaptureCompleted(event)) {
-    return NextResponse.json({ ok: true, ignored: true, reason: "CAPTURE_NOT_COMPLETED" }, { status: 200 });
+    return apiJson(req, { ok: true, ignored: true, reason: "CAPTURE_NOT_COMPLETED" }, { status: 200 });
   }
 
   const orderId = extractOrderId(event);
   console.log("[paypal] event", { eventType, orderId });
-  if (!orderId) return NextResponse.json({ ok: true, ignored: true, reason: "ORDER_NOT_FOUND" }, { status: 200 });
+  if (!orderId) return apiJson(req, { ok: true, ignored: true, reason: "ORDER_NOT_FOUND" }, { status: 200 });
 
   const supabase = supabaseAdmin();
   const { data: order } = await supabase
@@ -71,9 +71,9 @@ export async function POST(req: Request) {
     .eq("paypal_order_id", orderId)
     .maybeSingle<PayPalOrderRow>();
 
-  if (!order) return NextResponse.json({ ok: true, ignored: true, reason: "ORDER_NOT_FOUND" }, { status: 200 });
+  if (!order) return apiJson(req, { ok: true, ignored: true, reason: "ORDER_NOT_FOUND" }, { status: 200 });
   console.log("[paypal] order loaded", { orderId, status: order.status, itemKey: order.item_key, chatId: order.chat_id });
-  if (order.status === "fulfilled") return NextResponse.json({ ok: true, ignored: true, reason: "ALREADY_FULFILLED" }, { status: 200 });
+  if (order.status === "fulfilled") return apiJson(req, { ok: true, ignored: true, reason: "ALREADY_FULFILLED" }, { status: 200 });
 
   let captureId = order.capture_id ?? null;
 
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
           approved_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         });
-        return NextResponse.json({ ok: true, pending: true }, { status: 200 });
+        return apiJson(req, { ok: true, pending: true }, { status: 200 });
       }
       await markStatus(supabase, orderId, {
         status: "captured",
@@ -117,11 +117,11 @@ export async function POST(req: Request) {
     if (!item) {
       console.error("[paypal] catalog item missing", { itemKey: order.item_key });
       await markStatus(supabase, orderId, { status: "failed", updated_at: new Date().toISOString() });
-      return NextResponse.json({ ok: false, error: "CATALOG_ITEM_NOT_FOUND" }, { status: 500 });
+      return apiJson(req, { ok: false, error: "CATALOG_ITEM_NOT_FOUND" }, { status: 500 });
     }
 
     await sendTelegramDocument(order.chat_id, item);
-    await sendTelegramMessage(order.chat_id, "Pago confirmado. Te he enviado el archivo. ¡Gracias!");
+    await sendTelegramMessage(order.chat_id, "Pago confirmado. Te he enviado el archivo. Â¡Gracias!");
     console.log("[paypal] fulfilled", { orderId, chatId: order.chat_id });
 
     await markStatus(supabase, orderId, {
@@ -130,7 +130,7 @@ export async function POST(req: Request) {
       updated_at: new Date().toISOString()
     });
 
-    return NextResponse.json({ ok: true }, { status: 200 });
+    return apiJson(req, { ok: true }, { status: 200 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "UNKNOWN_ERROR";
     console.error("[paypal] error", message);
@@ -138,6 +138,7 @@ export async function POST(req: Request) {
       status: "failed",
       updated_at: new Date().toISOString()
     });
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return apiJson(req, { ok: false, error: message }, { status: 500 });
   }
 }
+

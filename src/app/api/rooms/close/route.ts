@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/lib/sessionPlayer";
 import { validateRoomCode } from "@/lib/validators";
@@ -39,18 +39,18 @@ export async function POST(req: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
     const status = msg === "UNAUTHORIZED" ? 401 : 500;
-    return NextResponse.json({ ok: false, error: msg }, { status });
+    return apiJson(req, { ok: false, error: msg }, { status });
   }
 
   const body = (await req.json().catch(() => null)) as Body | null;
   const code = typeof body?.code === "string" ? body.code.toUpperCase() : "";
-  if (!validateRoomCode(code)) return NextResponse.json({ ok: false, error: "INVALID_ROOM_CODE" }, { status: 400 });
+  if (!validateRoomCode(code)) return apiJson(req, { ok: false, error: "INVALID_ROOM_CODE" }, { status: 400 });
 
   const supabase = supabaseAdmin();
 
   const { data: room, error: roomError } = await supabase.from("rooms").select("id,code").eq("code", code).maybeSingle<{ id: string; code: string }>();
-  if (roomError) return NextResponse.json({ ok: false, error: roomError.message }, { status: 500 });
-  if (!room) return NextResponse.json({ ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
+  if (roomError) return apiJson(req, { ok: false, error: roomError.message }, { status: 500 });
+  if (!room) return apiJson(req, { ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
 
   const { data: member } = await supabase
     .from("room_members")
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     .eq("room_id", room.id)
     .eq("player_id", requesterId)
     .maybeSingle<{ role: string }>();
-  if ((member?.role ?? "") !== "owner") return NextResponse.json({ ok: false, error: "NOT_ALLOWED" }, { status: 403 });
+  if ((member?.role ?? "") !== "owner") return apiJson(req, { ok: false, error: "NOT_ALLOWED" }, { status: 403 });
 
   const { data: players } = await supabase.from("players").select("id").eq("room_id", room.id).returns<{ id: string }[]>();
   const playerIds = (players ?? []).map((p) => p.id);
@@ -97,5 +97,6 @@ export async function POST(req: Request) {
   await supabase.from("room_settings").delete().eq("room_id", room.id);
   await supabase.from("rooms").delete().eq("id", room.id);
 
-  return NextResponse.json({ ok: true });
+  return apiJson(req, { ok: true });
 }
+

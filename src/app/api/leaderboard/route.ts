@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/lib/sessionPlayer";
 
@@ -21,7 +21,7 @@ function rateLimit(req: Request): NextResponse | null {
   const now = Date.now();
   const last = lastHitByIp.get(ip) ?? 0;
   if (now - last < WINDOW_MS) {
-    return NextResponse.json({ ok: false, error: "RATE_LIMITED" }, { status: 429 });
+    return apiJson(req, { ok: false, error: "RATE_LIMITED" }, { status: 429 });
   }
   lastHitByIp.set(ip, now);
 
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
     const { player } = await requirePlayerFromSession(req);
     roomId = player.room_id;
   } catch {
-    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    return apiJson(req, { ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
   const { data, error } = await supabase
@@ -57,8 +57,9 @@ export async function GET(req: Request) {
     .returns<LeaderRow[]>();
 
   if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return apiJson(req, { ok: false, error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, leaders: data ?? [] });
+  return apiJson(req, { ok: true, leaders: data ?? [] });
 }
+

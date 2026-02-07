@@ -12,27 +12,8 @@ function isAllowedOrigin(req: NextRequest, origin: string): boolean {
   }
 }
 
-function getClientIp(req: NextRequest): string {
-  return (
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    "unknown"
-  );
-}
-
-function logApiRequest(req: NextRequest): void {
-  const requestId = crypto.randomUUID().slice(0, 8);
-  const ip = getClientIp(req);
-  const ua = req.headers.get("user-agent") || "unknown";
-
-  console.log("[API] [IN]", {
-    requestId,
-    method: req.method,
-    path: req.nextUrl.pathname,
-    query: req.nextUrl.search,
-    ip,
-    ua
-  });
+function logApi(url: string, status: number | "forward") {
+  console.log("[API]", { url, status });
 }
 
 function withApiHeaders(res: NextResponse, req: NextRequest): NextResponse {
@@ -57,15 +38,20 @@ function withApiHeaders(res: NextResponse, req: NextRequest): NextResponse {
 export function middleware(req: NextRequest) {
   if (!req.nextUrl.pathname.startsWith("/api/")) return NextResponse.next();
 
-  logApiRequest(req);
+  const fullUrl = req.nextUrl.toString();
 
   // Avoid cloning large multipart bodies for upload endpoint.
-  if (req.nextUrl.pathname === "/api/upload") return NextResponse.next();
+  if (req.nextUrl.pathname === "/api/upload") {
+    logApi(fullUrl, "forward");
+    return NextResponse.next();
+  }
 
   if (req.method === "OPTIONS") {
+    logApi(fullUrl, 204);
     return withApiHeaders(new NextResponse(null, { status: 204 }), req);
   }
 
+  logApi(fullUrl, "forward");
   return withApiHeaders(NextResponse.next(), req);
 }
 

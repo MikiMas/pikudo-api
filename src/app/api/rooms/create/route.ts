@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { randomInt } from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { validateNickname } from "@/lib/validators";
@@ -29,7 +29,7 @@ function parseRounds(input: unknown): number | null {
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as CreateBody | null;
   const rounds = parseRounds(body?.rounds);
-  if (!rounds) return NextResponse.json({ ok: false, error: "INVALID_ROUNDS" }, { status: 400 });
+  if (!rounds) return apiJson(req, { ok: false, error: "INVALID_ROUNDS" }, { status: 400 });
   const roomName = typeof body?.roomName === "string" ? body.roomName.trim() : "";
 
   const supabase = supabaseAdmin();
@@ -45,11 +45,11 @@ export async function POST(req: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
     const status = msg === "UNAUTHORIZED" ? 401 : 500;
-    return NextResponse.json({ ok: false, error: msg }, { status });
+    return apiJson(req, { ok: false, error: msg }, { status });
   }
 
   if (devicePlayerId && deviceRoomId) {
-    return NextResponse.json({ ok: false, error: "ALREADY_IN_ROOM" }, { status: 409 });
+    return apiJson(req, { ok: false, error: "ALREADY_IN_ROOM" }, { status: 409 });
   }
 
   let row: CreateRoomRow | null = null;
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
     const isMissingCreateRoom = msg.toLowerCase().includes("could not find the function public.create_room");
 
     if (!isMissingCreateRoom) {
-      return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+      return apiJson(req, { ok: false, error: msg }, { status: 400 });
     }
 
     const now = new Date();
@@ -94,7 +94,7 @@ export async function POST(req: Request) {
         insertMsg.toLowerCase().includes("column rooms.rounds does not exist") ||
         insertMsg.toLowerCase().includes("rounds column");
       if (missingRoundsColumn) {
-        return NextResponse.json(
+        return apiJson(req, 
           {
             ok: false,
             error: "MISSING_DB_MIGRATION_ROUNDS",
@@ -107,7 +107,7 @@ export async function POST(req: Request) {
       const pgCode = (insertError as any)?.code as string | undefined;
       if (pgCode === "23505") continue; // code collision, retry
 
-      return NextResponse.json(
+      return apiJson(req, 
         {
           ok: false,
           error: insertError?.message ?? "CREATE_ROOM_FAILED",
@@ -119,7 +119,7 @@ export async function POST(req: Request) {
   }
 
   if (!row) {
-    return NextResponse.json(
+    return apiJson(req, 
       {
         ok: false,
         error: "CREATE_ROOM_FAILED",
@@ -138,7 +138,7 @@ export async function POST(req: Request) {
     roomError?.message?.toLowerCase().includes("could not find the 'rounds' column") ||
     roomError?.message?.toLowerCase().includes("column rooms.rounds does not exist")
   ) {
-    return NextResponse.json(
+    return apiJson(req, 
       {
         ok: false,
         error: "MISSING_DB_MIGRATION_ROUNDS",
@@ -147,7 +147,7 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-  if (roomError || !room) return NextResponse.json({ ok: false, error: roomError?.message ?? "ROOM_NOT_FOUND" }, { status: 500 });
+  if (roomError || !room) return apiJson(req, { ok: false, error: roomError?.message ?? "ROOM_NOT_FOUND" }, { status: 500 });
 
   if (roomName) {
     const { error: updateRoomNameError } = await supabase.from("rooms").update({ name: roomName }).eq("id", room.id);
@@ -156,7 +156,7 @@ export async function POST(req: Request) {
       updateRoomNameError?.message?.toLowerCase().includes("column rooms.name does not exist") ||
       updateRoomNameError?.message?.toLowerCase().includes('column "name" does not exist')
     ) {
-      return NextResponse.json(
+      return apiJson(req, 
         {
           ok: false,
           error: "MISSING_DB_MIGRATION_ROOM_NAME",
@@ -179,8 +179,8 @@ export async function POST(req: Request) {
 
   if (updateError) {
     const code = (updateError as any).code as string | undefined;
-    if (code === "23505") return NextResponse.json({ ok: false, error: "NICKNAME_TAKEN" }, { status: 409 });
-    return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
+    if (code === "23505") return apiJson(req, { ok: false, error: "NICKNAME_TAKEN" }, { status: 409 });
+    return apiJson(req, { ok: false, error: updateError.message }, { status: 500 });
   }
 
   await supabase.from("room_members").upsert({
@@ -193,9 +193,10 @@ export async function POST(req: Request) {
   });
   await supabase.from("rooms").update({ created_by_player_id: updated.id }).eq("id", room.id);
 
-  return NextResponse.json({
+  return apiJson(req, {
     ok: true,
     room: { id: room.id, code: row.code, rounds: room.rounds },
     player: updated
   });
 }
+

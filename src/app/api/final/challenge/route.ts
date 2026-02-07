@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/lib/sessionPlayer";
 import { validateUuid } from "@/lib/validators";
@@ -51,7 +51,7 @@ async function isRoomEnded(supabase: ReturnType<typeof supabaseAdmin>, roomId: s
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const challengeId = url.searchParams.get("challengeId");
-  if (!validateUuid(challengeId)) return NextResponse.json({ ok: false, error: "INVALID_CHALLENGE_ID" }, { status: 400 });
+  if (!validateUuid(challengeId)) return apiJson(req, { ok: false, error: "INVALID_CHALLENGE_ID" }, { status: 400 });
 
   const supabase = supabaseAdmin();
   let roomId = "";
@@ -60,11 +60,11 @@ export async function GET(req: Request) {
     roomId = player.room_id;
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
-    return NextResponse.json({ ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
+    return apiJson(req, { ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
   }
 
   const ended = await isRoomEnded(supabase, roomId);
-  if (!ended) return NextResponse.json({ ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
+  if (!ended) return apiJson(req, { ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
 
   const { data: members, error: membersError } = await supabase
     .from("room_members")
@@ -72,17 +72,17 @@ export async function GET(req: Request) {
     .eq("room_id", roomId)
     .limit(500)
     .returns<RoomMemberRow[]>();
-  if (membersError) return NextResponse.json({ ok: false, error: membersError.message }, { status: 500 });
+  if (membersError) return apiJson(req, { ok: false, error: membersError.message }, { status: 500 });
   const ids = (members ?? []).map((m) => String(m.player_id));
-  if (ids.length === 0) return NextResponse.json({ ok: true, challenge: null, media: [] });
+  if (ids.length === 0) return apiJson(req, { ok: true, challenge: null, media: [] });
 
   const { data: challenge, error: challengeError } = await supabase
     .from("challenges")
     .select("id,title,description")
     .eq("id", challengeId!.trim())
     .maybeSingle<ChallengeInfoRow>();
-  if (challengeError) return NextResponse.json({ ok: false, error: challengeError.message }, { status: 500 });
-  if (!challenge) return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+  if (challengeError) return apiJson(req, { ok: false, error: challengeError.message }, { status: 500 });
+  if (!challenge) return apiJson(req, { ok: false, error: "NOT_FOUND" }, { status: 404 });
 
   const { data: rows, error: rowsError } = await supabase
     .from("player_challenges")
@@ -93,7 +93,7 @@ export async function GET(req: Request) {
     .order("completed_at", { ascending: false })
     .limit(4000)
     .returns<MediaRow[]>();
-  if (rowsError) return NextResponse.json({ ok: false, error: rowsError.message }, { status: 500 });
+  if (rowsError) return apiJson(req, { ok: false, error: rowsError.message }, { status: 500 });
 
   const nicknameById = new Map((members ?? []).map((m) => [m.player_id, m.nickname_at_join]));
 
@@ -108,5 +108,6 @@ export async function GET(req: Request) {
     };
   });
 
-  return NextResponse.json({ ok: true, challenge: { id: challenge.id, title: challenge.title, description: challenge.description }, media });
+  return apiJson(req, { ok: true, challenge: { id: challenge.id, title: challenge.title, description: challenge.description }, media });
 }
+

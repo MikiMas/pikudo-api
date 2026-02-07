@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getBlockStartUTC, secondsToNextBlock } from "@/lib/timeBlock";
 
@@ -28,9 +28,9 @@ export async function GET(req: Request) {
           .returns<PlayerChallengeRow[]>()
       ]);
 
-    if (settingsError) return NextResponse.json({ ok: false, error: settingsError.message }, { status: 500 });
-    if (playersError) return NextResponse.json({ ok: false, error: playersError.message }, { status: 500 });
-    if (pcsError) return NextResponse.json({ ok: false, error: pcsError.message }, { status: 500 });
+    if (settingsError) return apiJson(req, { ok: false, error: settingsError.message }, { status: 500 });
+    if (playersError) return apiJson(req, { ok: false, error: playersError.message }, { status: 500 });
+    if (pcsError) return apiJson(req, { ok: false, error: pcsError.message }, { status: 500 });
 
     const challengeIds = Array.from(new Set((pcs ?? []).map((r) => r.challenge_id)));
     const { data: challenges, error: challengesError } =
@@ -38,7 +38,7 @@ export async function GET(req: Request) {
         ? { data: [] as ChallengeRow[], error: null as any }
         : await supabase.from("challenges").select("id,title,description").in("id", challengeIds).returns<ChallengeRow[]>();
 
-    if (challengesError) return NextResponse.json({ ok: false, error: challengesError.message }, { status: 500 });
+    if (challengesError) return apiJson(req, { ok: false, error: challengesError.message }, { status: 500 });
 
     const challengesById = new Map((challenges ?? []).map((c) => [c.id, c]));
     const pcsByPlayer = new Map<string, { id: string; title: string; description: string; completed: boolean }[]>();
@@ -58,7 +58,7 @@ export async function GET(req: Request) {
       challenges: pcsByPlayer.get(p.id) ?? []
     }));
 
-    return NextResponse.json({
+    return apiJson(req, {
       ok: true,
       blockStart: blockStartIso,
       nextBlockInSec,
@@ -67,6 +67,7 @@ export async function GET(req: Request) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return apiJson(req, { ok: false, error: message }, { status: 500 });
   }
 }
+

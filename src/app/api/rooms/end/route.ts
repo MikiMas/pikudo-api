@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { validateRoomCode } from "@/lib/validators";
 import { requirePlayerFromDevice } from "@/lib/sessionPlayer";
@@ -12,7 +12,7 @@ type RoomRow = { id: string; code: string };
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as Body | null;
   const code = body?.code;
-  if (!validateRoomCode(code)) return NextResponse.json({ ok: false, error: "INVALID_ROOM_CODE" }, { status: 400 });
+  if (!validateRoomCode(code)) return apiJson(req, { ok: false, error: "INVALID_ROOM_CODE" }, { status: 400 });
 
   let playerId = "";
   let playerRoomId: string | null = null;
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
     const status = msg === "UNAUTHORIZED" ? 401 : 500;
-    return NextResponse.json({ ok: false, error: msg }, { status });
+    return apiJson(req, { ok: false, error: msg }, { status });
   }
 
   const supabase = supabaseAdmin();
@@ -34,17 +34,17 @@ export async function POST(req: Request) {
     .select("id,room_id")
     .eq("id", playerId)
     .maybeSingle<PlayerRow>();
-  if (playerError) return NextResponse.json({ ok: false, error: playerError.message }, { status: 500 });
-  if (!player || !playerRoomId) return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+  if (playerError) return apiJson(req, { ok: false, error: playerError.message }, { status: 500 });
+  if (!player || !playerRoomId) return apiJson(req, { ok: false, error: "UNAUTHORIZED" }, { status: 401 });
 
   const { data: room, error: roomError } = await supabase
     .from("rooms")
     .select("id,code")
     .eq("code", code)
     .maybeSingle<RoomRow>();
-  if (roomError) return NextResponse.json({ ok: false, error: roomError.message }, { status: 500 });
-  if (!room) return NextResponse.json({ ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
-  if (room.id !== player.room_id) return NextResponse.json({ ok: false, error: "NOT_ALLOWED" }, { status: 403 });
+  if (roomError) return apiJson(req, { ok: false, error: roomError.message }, { status: 500 });
+  if (!room) return apiJson(req, { ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
+  if (room.id !== player.room_id) return apiJson(req, { ok: false, error: "NOT_ALLOWED" }, { status: 403 });
 
   const { data: member } = await supabase
     .from("room_members")
@@ -52,12 +52,13 @@ export async function POST(req: Request) {
     .eq("room_id", room.id)
     .eq("player_id", player.id)
     .maybeSingle<{ role: string }>();
-  if ((member?.role ?? "") !== "owner") return NextResponse.json({ ok: false, error: "NOT_ALLOWED" }, { status: 403 });
+  if ((member?.role ?? "") !== "owner") return apiJson(req, { ok: false, error: "NOT_ALLOWED" }, { status: 403 });
 
   const nowIso = new Date().toISOString();
   const { error: updateError } = await supabase.from("rooms").update({ status: "ended", ends_at: nowIso }).eq("id", room.id);
-  if (updateError) return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
+  if (updateError) return apiJson(req, { ok: false, error: updateError.message }, { status: 500 });
 
-  return NextResponse.json({ ok: true, endedAt: nowIso });
+  return apiJson(req, { ok: true, endedAt: nowIso });
 }
+
 

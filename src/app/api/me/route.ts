@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { requirePlayerFromDevice } from "@/lib/sessionPlayer";
 
 export const runtime = "nodejs";
@@ -6,10 +6,11 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   try {
     const { deviceId, player } = await requirePlayerFromDevice(req);
-    return NextResponse.json({ player, deviceId });
+    return apiJson(req, { player, deviceId });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
     const status = msg === "UNAUTHORIZED" ? 401 : 500;
-    return NextResponse.json({ ok: false, error: msg }, { status });
+    return apiJson(req, { ok: false, error: msg }, { status });
   }
 }
+

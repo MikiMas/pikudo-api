@@ -1,9 +1,9 @@
-﻿import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  return NextResponse.json({
+export async function GET(req: Request) {
+  return apiJson(req, {
     ok: true,
     service: "sumo",
     endpoints: [
@@ -15,3 +15,4 @@ export async function GET() {
     ]
   });
 }
+

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { seedChallenges } from "@/lib/seedChallenges";
 
@@ -9,9 +9,10 @@ export async function POST(req: Request) {
     const supabase = supabaseAdmin();
     const result = await seedChallenges(supabase);
 
-    return NextResponse.json({ ok: true, ...result });
+    return apiJson(req, { ok: true, ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return apiJson(req, { ok: false, error: message }, { status: 500 });
   }
 }
+

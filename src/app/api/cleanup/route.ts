@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   const tokenQuery = (url.searchParams.get("token") ?? "").trim();
   const expected = process.env.CLEANUP_TOKEN ?? "";
   if (!expected || (token !== expected && tokenQuery !== expected)) {
-    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    return apiJson(req, { ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
   const supabase = supabaseAdmin();
@@ -46,10 +46,10 @@ export async function POST(req: Request) {
     .lte("ends_at", cutoffIso)
     .limit(200)
     .returns<{ id: string }[]>();
-  if (roomsError) return NextResponse.json({ ok: false, error: roomsError.message }, { status: 500 });
+  if (roomsError) return apiJson(req, { ok: false, error: roomsError.message }, { status: 500 });
 
   const roomIds = (rooms ?? []).map((r) => r.id);
-  if (roomIds.length === 0) return NextResponse.json({ ok: true, deletedRooms: 0 });
+  if (roomIds.length === 0) return apiJson(req, { ok: true, deletedRooms: 0 });
 
   const { data: players } = await supabase.from("players").select("id,room_id").in("room_id", roomIds);
   const playerIds = (players ?? []).map((p: any) => String(p.id));
@@ -87,5 +87,6 @@ export async function POST(req: Request) {
   await supabase.from("room_settings").delete().in("room_id", roomIds);
   await supabase.from("rooms").delete().in("id", roomIds);
 
-  return NextResponse.json({ ok: true, deletedRooms: roomIds.length });
+  return apiJson(req, { ok: true, deletedRooms: roomIds.length });
 }
+

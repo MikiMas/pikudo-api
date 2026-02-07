@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
 type PlayerRow = { id: string; nickname: string; points: number; created_at: string };
 
-export async function GET() {
+export async function GET(req: Request) {
   const supabase = supabaseAdmin();
   const { data, error } = await supabase
     .from("players")
@@ -15,7 +15,8 @@ export async function GET() {
     .limit(500)
     .returns<PlayerRow[]>();
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, players: data ?? [] });
+  if (error) return apiJson(req, { ok: false, error: error.message }, { status: 500 });
+  return apiJson(req, { ok: true, players: data ?? [] });
 }
+
 

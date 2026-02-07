@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/lib/sessionPlayer";
 
@@ -53,11 +53,11 @@ export async function GET(req: Request) {
     roomId = player.room_id;
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
-    return NextResponse.json({ ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
+    return apiJson(req, { ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
   }
 
   const ended = await isRoomEnded(supabase, roomId);
-  if (!ended) return NextResponse.json({ ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
+  if (!ended) return apiJson(req, { ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
 
   const { data: room } = await supabase.from("rooms").select("name").eq("id", roomId).maybeSingle<{ name: string | null }>();
 
@@ -68,11 +68,11 @@ export async function GET(req: Request) {
     .limit(500)
     .returns<RoomMemberRow[]>();
 
-  if (membersError) return NextResponse.json({ ok: false, error: membersError.message }, { status: 500 });
+  if (membersError) return apiJson(req, { ok: false, error: membersError.message }, { status: 500 });
 
   const ids = (members ?? []).map((m) => m.player_id);
   if (ids.length === 0) {
-    return NextResponse.json({ ok: true, roomName: room?.name ?? null, leaders: [] });
+    return apiJson(req, { ok: true, roomName: room?.name ?? null, leaders: [] });
   }
 
   const { data: players, error: playersError } = await supabase
@@ -81,7 +81,7 @@ export async function GET(req: Request) {
     .in("id", ids)
     .returns<PlayerRow[]>();
 
-  if (playersError) return NextResponse.json({ ok: false, error: playersError.message }, { status: 500 });
+  if (playersError) return apiJson(req, { ok: false, error: playersError.message }, { status: 500 });
 
   const playerById = new Map((players ?? []).map((p) => [p.id, p]));
 
@@ -98,9 +98,10 @@ export async function GET(req: Request) {
     return String(a.joinedAt).localeCompare(String(b.joinedAt));
   });
 
-  return NextResponse.json({
+  return apiJson(req, {
     ok: true,
     roomName: room?.name ?? null,
     leaders: leaders.map(({ joinedAt, ...rest }) => rest)
   });
 }
+

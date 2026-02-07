@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";`r`nimport { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/lib/sessionPlayer";
 
@@ -50,20 +50,20 @@ export async function GET(req: Request) {
     roomId = player.room_id;
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
-    return NextResponse.json({ ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
+    return apiJson(req, { ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
   }
 
   const ended = await isRoomEnded(supabase, roomId);
-  if (!ended) return NextResponse.json({ ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
+  if (!ended) return apiJson(req, { ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
 
   const { data: players, error: playersError } = await supabase
     .from("room_members")
     .select("player_id")
     .eq("room_id", roomId)
     .limit(500);
-  if (playersError) return NextResponse.json({ ok: false, error: playersError.message }, { status: 500 });
+  if (playersError) return apiJson(req, { ok: false, error: playersError.message }, { status: 500 });
   const ids = (players ?? []).map((p: any) => String(p.player_id));
-  if (ids.length === 0) return NextResponse.json({ ok: true, challenges: [] });
+  if (ids.length === 0) return apiJson(req, { ok: true, challenges: [] });
 
   const { data: rows, error: rowsError } = await supabase
     .from("player_challenges")
@@ -71,7 +71,7 @@ export async function GET(req: Request) {
     .in("player_id", ids)
     .limit(4000)
     .returns<ChallengeRow[]>();
-  if (rowsError) return NextResponse.json({ ok: false, error: rowsError.message }, { status: 500 });
+  if (rowsError) return apiJson(req, { ok: false, error: rowsError.message }, { status: 500 });
 
   const byChallenge = new Map<
     string,
@@ -91,5 +91,6 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, challenges: Array.from(byChallenge.values()) });
+  return apiJson(req, { ok: true, challenges: Array.from(byChallenge.values()) });
 }
+
