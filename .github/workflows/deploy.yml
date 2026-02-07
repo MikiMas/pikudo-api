@@ -8,18 +8,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: appleboy/ssh-action@v1.0.0
+        env:
+          PIKUDO_API_ENV: ${{ secrets.PIKUDO_API_ENV }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
+          envs: PIKUDO_API_ENV
           script_stop: true
           script: |
-            set -euxo pipefail
+            set -euo pipefail
 
             cd /var/www/pikudo-api
             git fetch --all --prune
             git checkout main
             git reset --hard origin/main
+
+            printf "%s" "$PIKUDO_API_ENV" > .env
+            chmod 600 .env
 
             echo "DEPLOY_COMMIT=$(git rev-parse --short HEAD)"
 
