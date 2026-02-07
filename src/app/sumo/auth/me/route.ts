@@ -1,0 +1,1 @@
+export { GET, POST, PUT, PATCH, DELETE } from "@/app/api/(sumo)/sumo/auth/me/route";
