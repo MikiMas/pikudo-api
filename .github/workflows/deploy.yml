@@ -32,6 +32,7 @@ jobs:
             npm ci
             npm run build
 
-            pm2 describe pikudo-api >/dev/null 2>&1 && pm2 restart pikudo-api --update-env || pm2 start npm --name pikudo-api -- start
+            pm2 delete pikudo-api || true
+            pm2 start npm --name pikudo-api -- start
             pm2 save
             pm2 describe pikudo-api
