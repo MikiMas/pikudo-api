@@ -140,12 +140,21 @@ export async function loginWithPassword(email: string, password: string) {
           session: secondary.data.session
         };
       }
-
-      throw new Error(secondary.error?.message ?? "INVALID_CREDENTIALS");
+      const secondaryMessage = secondary.error?.message ?? "";
+      if (secondaryMessage.toLowerCase().includes("invalid api key")) {
+        throw new Error("SERVER_SUPABASE_KEY_INVALID");
+      }
+      throw new Error(secondaryMessage || "INVALID_CREDENTIALS");
     }
+
+    throw new Error("SERVER_SUPABASE_KEY_INVALID");
   }
 
-  throw new Error(primary.error?.message ?? "INVALID_CREDENTIALS");
+  if (primaryMessage.toLowerCase().includes("invalid login credentials")) {
+    throw new Error("INVALID_CREDENTIALS");
+  }
+
+  throw new Error(primaryMessage || "INVALID_CREDENTIALS");
 }
 
 export async function registerWithPassword(input: {

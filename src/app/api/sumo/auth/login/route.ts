@@ -33,8 +33,22 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     const message = normalizeErrorMessage(error);
-    const status = message.toLowerCase().includes("invalid") ? 401 : 400;
-    return apiJson(req, { ok: false, error: message }, { status });
+    const lower = message.toLowerCase();
+    console.error("[SUMO_AUTH_LOGIN_ERROR]", message);
+
+    if (message === "INVALID_CREDENTIALS") {
+      return apiJson(req, { ok: false, error: message }, { status: 401 });
+    }
+
+    if (message === "SERVER_SUPABASE_KEY_INVALID" || lower.includes("invalid api key")) {
+      return apiJson(req, { ok: false, error: "SERVER_SUPABASE_KEY_INVALID" }, { status: 500 });
+    }
+
+    if (lower.includes("invalid login credentials")) {
+      return apiJson(req, { ok: false, error: "INVALID_CREDENTIALS" }, { status: 401 });
+    }
+
+    return apiJson(req, { ok: false, error: message }, { status: 400 });
   }
 }
 
