@@ -27,19 +27,37 @@ function getSumoAuthKey(): string {
   );
 }
 
-let authClient: ReturnType<typeof createClient> | null = null;
+let authClient: ReturnType<typeof createAuthClient> | null = null;
+let serviceAuthClient: ReturnType<typeof createAuthClient> | null = null;
+
+function createAuthClient(apiKey: string) {
+  return createClient(requireSupabaseProjectEnv(SUMO_PROJECT, "url"), apiKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    }
+  });
+}
 
 function getAuthClient() {
   if (!authClient) {
-    authClient = createClient(requireSupabaseProjectEnv(SUMO_PROJECT, "url"), getSumoAuthKey(), {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false
-      }
-    });
+    authClient = createAuthClient(getSumoAuthKey());
   }
 
   return authClient;
+}
+
+function getServiceAuthClient() {
+  const serviceKey = getSupabaseProjectEnv(SUMO_PROJECT, "serviceRole");
+  if (!serviceKey) {
+    return null;
+  }
+
+  if (!serviceAuthClient) {
+    serviceAuthClient = createAuthClient(serviceKey);
+  }
+
+  return serviceAuthClient;
 }
 
 export function readBearerToken(req: Request): string | null {
@@ -95,19 +113,39 @@ export function toSessionPayload(session: Session) {
 
 export async function loginWithPassword(email: string, password: string) {
   const auth = getAuthClient();
-  const { data, error } = await auth.auth.signInWithPassword({
+  const primary = await auth.auth.signInWithPassword({
     email,
     password
   });
 
-  if (error || !data.session || !data.user) {
-    throw new Error(error?.message ?? "INVALID_CREDENTIALS");
+  if (!primary.error && primary.data.session && primary.data.user) {
+    return {
+      user: primary.data.user,
+      session: primary.data.session
+    };
   }
 
-  return {
-    user: data.user,
-    session: data.session
-  };
+  const primaryMessage = primary.error?.message ?? "";
+  if (primaryMessage.toLowerCase().includes("invalid api key")) {
+    const serviceAuth = getServiceAuthClient();
+    if (serviceAuth && serviceAuth !== auth) {
+      const secondary = await serviceAuth.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (!secondary.error && secondary.data.session && secondary.data.user) {
+        return {
+          user: secondary.data.user,
+          session: secondary.data.session
+        };
+      }
+
+      throw new Error(secondary.error?.message ?? "INVALID_CREDENTIALS");
+    }
+  }
+
+  throw new Error(primary.error?.message ?? "INVALID_CREDENTIALS");
 }
 
 export async function registerWithPassword(input: {
