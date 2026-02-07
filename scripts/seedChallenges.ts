@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { seedChallenges } from "@/lib/seedChallenges";
+import { seedChallenges } from "@/app/api/(pikudo)/_lib/seedChallenges";
 
 async function main() {
   const supabase = supabaseAdmin();

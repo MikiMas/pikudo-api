@@ -28,8 +28,8 @@ function withApiHeaders(res: NextResponse, req: NextRequest): NextResponse {
     res.headers.set("Access-Control-Allow-Origin", origin);
     res.headers.set("Vary", "Origin");
     res.headers.set("Access-Control-Allow-Credentials", "true");
-    res.headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-    res.headers.set("Access-Control-Allow-Headers", "content-type,x-device-id");
+    res.headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.headers.set("Access-Control-Allow-Headers", "content-type,authorization,x-device-id,x-session-token");
   }
 
   return res;
@@ -58,3 +58,4 @@ export function middleware(req: NextRequest) {
 export const config = {
   matcher: ["/api/:path*"]
 };
+
