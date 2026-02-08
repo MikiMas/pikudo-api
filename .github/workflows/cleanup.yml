@@ -1,0 +1,31 @@
+name: Cleanup Ended Rooms
+
+on:
+  schedule:
+    # About 08:00 Europe/Madrid, handling DST (CET/CEST)
+    - cron: "5 6 * * *"
+    - cron: "5 7 * * *"
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            if [ "$(TZ=Europe/Madrid date +%H)" != "08" ]; then
+              echo "Skipping cleanup outside 08:00 Europe/Madrid."
+              exit 0
+            fi
+
+            cd /var/www/pikudo-api
+
+            curl --fail --silent --show-error \
+              -X POST "http://127.0.0.1:3000/api/pikudo/cleanup"
