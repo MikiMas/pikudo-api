@@ -7,6 +7,7 @@ type Body = {
   display_name?: unknown;
   home_city?: unknown;
   bio?: unknown;
+  avatar_url?: unknown;
   default_share_live_location?: unknown;
 };
 
@@ -37,6 +38,7 @@ export async function PATCH(req: Request) {
       display_name: typeof body.display_name === "string" ? body.display_name.trim() : null,
       home_city: typeof body.home_city === "string" ? body.home_city.trim() : null,
       bio: typeof body.bio === "string" ? body.bio.trim() : null,
+      avatar_url: typeof body.avatar_url === "string" ? body.avatar_url.trim() : null,
       default_share_live_location:
         typeof body.default_share_live_location === "boolean" ? body.default_share_live_location : undefined
     });
@@ -48,4 +50,6 @@ export async function PATCH(req: Request) {
     return apiJson(req, { ok: false, error: message }, { status });
   }
 }
+
+
 

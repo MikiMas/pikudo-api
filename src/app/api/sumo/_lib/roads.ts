@@ -1,6 +1,8 @@
-﻿export type LatLngPoint = { lat: number; lng: number };
+export type LatLngPoint = { lat: number; lng: number };
 
 const OSRM_BASE_URL = "https://router.project-osrm.org";
+const MAPBOX_BASE_URL = "https://api.mapbox.com";
+const MAPBOX_MAX_COORDS = 100;
 
 function assertFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -70,18 +72,94 @@ export async function snapPointToNearestRoad(point: LatLngPoint): Promise<LatLng
   return { lng: location[0], lat: location[1] };
 }
 
-export async function snapTraceToRoad(points: LatLngPoint[], stepsPerSegment = 30, epsilon = 0.00001): Promise<LatLngPoint[]> {
-  const dense = densifyStraightSegments(points, stepsPerSegment);
-  const snapped: LatLngPoint[] = [];
+function toCoordsParam(points: LatLngPoint[]): string {
+  return points.map((point) => `${point.lng},${point.lat}`).join(";");
+}
 
-  for (const point of dense) {
-    try {
-      snapped.push(await snapPointToNearestRoad(point));
-    } catch {
-      // Si falla OSRM para un punto, mantenemos el punto original para preservar la traza.
-      snapped.push(point);
-    }
+function chunkPoints(points: LatLngPoint[], chunkSize: number): LatLngPoint[][] {
+  const chunks: LatLngPoint[][] = [];
+  for (let index = 0; index < points.length; index += chunkSize) {
+    chunks.push(points.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+async function mapboxMatch(points: LatLngPoint[]): Promise<LatLngPoint[]> {
+  const token = process.env.MAPBOX_ACCESS_TOKEN?.trim();
+  if (!token) {
+    throw new Error("MAPBOX_ACCESS_TOKEN_MISSING");
   }
 
-  return dedupeNearPoints(snapped, epsilon);
+  const chunks = chunkPoints(points, MAPBOX_MAX_COORDS);
+  const snapped: LatLngPoint[] = [];
+
+  for (const segment of chunks) {
+    if (segment.length < 2) {
+      snapped.push(...segment);
+      continue;
+    }
+
+    const coords = toCoordsParam(segment);
+    const url = `${MAPBOX_BASE_URL}/matching/v5/mapbox/driving/${coords}?geometries=geojson&overview=full&tidy=true&access_token=${encodeURIComponent(token)}`;
+    const response = await fetch(url, { cache: "no-store" });
+
+    if (!response.ok) {
+      throw new Error(`MAPBOX_MATCH_HTTP_${response.status}`);
+    }
+
+    const json = (await response.json()) as {
+      code?: string;
+      message?: string;
+      matchings?: { geometry?: { coordinates?: number[][] } }[];
+    };
+
+    if (json.code !== "Ok") {
+      throw new Error(`MAPBOX_MATCH_${json.code ?? "FAILED"}${json.message ? `: ${json.message}` : ""}`);
+    }
+
+    const geometry = json.matchings?.[0]?.geometry?.coordinates;
+    if (!geometry || geometry.length < 2) {
+      throw new Error("MAPBOX_MATCH_NO_GEOMETRY");
+    }
+
+    const pointsChunk = geometry
+      .filter((pair) => Array.isArray(pair) && pair.length >= 2 && assertFiniteNumber(pair[0]) && assertFiniteNumber(pair[1]))
+      .map((pair) => ({ lng: pair[0], lat: pair[1] }));
+
+    if (pointsChunk.length < 2) {
+      throw new Error("MAPBOX_MATCH_INVALID_GEOMETRY");
+    }
+
+    if (snapped.length > 0) {
+      pointsChunk.shift();
+    }
+    snapped.push(...pointsChunk);
+  }
+
+  if (snapped.length < 2) {
+    throw new Error("MAPBOX_MATCH_OUTPUT_TOO_SHORT");
+  }
+
+  return snapped;
+}
+
+export async function snapTraceToRoad(points: LatLngPoint[], stepsPerSegment = 30, epsilon = 0.00001): Promise<LatLngPoint[]> {
+  const dense = densifyStraightSegments(points, stepsPerSegment);
+
+  try {
+    const matched = await mapboxMatch(dense);
+    return dedupeNearPoints(matched, epsilon);
+  } catch {
+    const snapped: LatLngPoint[] = [];
+
+    for (const point of dense) {
+      try {
+        snapped.push(await snapPointToNearestRoad(point));
+      } catch {
+        snapped.push(point);
+      }
+    }
+
+    return dedupeNearPoints(snapped, epsilon);
+  }
 }

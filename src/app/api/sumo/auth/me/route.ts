@@ -7,7 +7,13 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   try {
     const user = await requireSumoUser(req);
-    const profile = await getProfileById(user.id);
+    let profile = null;
+    try {
+      profile = await getProfileById(user.id);
+    } catch (profileError) {
+      console.warn("[SUMO_AUTH_ME_PROFILE_ERROR]", normalizeErrorMessage(profileError));
+      profile = null;
+    }
 
     return apiJson(req, {
       ok: true,

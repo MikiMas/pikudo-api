@@ -44,6 +44,12 @@ type CreateSpotInput = {
   is_public?: boolean;
 };
 
+type CheckInPresenceInput = {
+  routeId: string;
+  userId: string;
+  bikeId?: string | null;
+};
+
 function asErrorMessage(error: unknown): string {
   if (typeof error === "object" && error && "message" in error) {
     const message = (error as { message?: unknown }).message;
@@ -86,6 +92,7 @@ export async function upsertProfileById(
     display_name?: string | null;
     home_city?: string | null;
     bio?: string | null;
+    avatar_url?: string | null;
     default_share_live_location?: boolean;
   }
 ) {
@@ -96,6 +103,7 @@ export async function upsertProfileById(
   if ("display_name" in input) payload.display_name = input.display_name ?? null;
   if ("home_city" in input) payload.home_city = input.home_city ?? null;
   if ("bio" in input) payload.bio = input.bio ?? null;
+  if ("avatar_url" in input) payload.avatar_url = input.avatar_url ?? null;
   if (typeof input.default_share_live_location === "boolean") {
     payload.default_share_live_location = input.default_share_live_location;
   }
@@ -138,7 +146,7 @@ export async function listGarage(userId: string) {
   const supabase = supabaseAdminForProject("sumo");
   const { data, error } = await supabase
     .from("bikes")
-    .select("*, bike_mods(*)")
+    .select("*, bike_mods(*), bike_media(*)")
     .eq("owner_id", userId)
     .order("created_at", { ascending: false });
 
@@ -147,6 +155,123 @@ export async function listGarage(userId: string) {
   }
 
   return data ?? [];
+}
+
+export async function listRouteMedia(routeId: string) {
+  const supabase = supabaseAdminForProject("sumo");
+  const { data, error } = await supabase
+    .from("route_media")
+    .select("*, profiles!route_media_uploaded_by_fkey(username,display_name,avatar_url)")
+    .eq("route_id", routeId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function createRouteMedia(input: {
+  routeId: string;
+  uploadedBy: string;
+  mediaUrl: string;
+  caption?: string | null;
+}) {
+  const supabase = supabaseAdminForProject("sumo");
+  const { data, error } = await supabase
+    .from("route_media")
+    .insert({
+      route_id: input.routeId,
+      uploaded_by: input.uploadedBy,
+      media_url: input.mediaUrl,
+      caption: input.caption ?? null
+    })
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function listRoutePlans(routeId: string) {
+  const supabase = supabaseAdminForProject("sumo");
+  const { data, error } = await supabase
+    .from("route_plans")
+    .select("*, profiles!route_plans_user_id_fkey(username,display_name,avatar_url)")
+    .eq("route_id", routeId)
+    .gte("planned_at", new Date().toISOString())
+    .order("planned_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function createRoutePlan(input: {
+  routeId: string;
+  userId: string;
+  plannedAt: string;
+  note?: string | null;
+}) {
+  const supabase = supabaseAdminForProject("sumo");
+  const { data, error } = await supabase
+    .from("route_plans")
+    .insert({
+      route_id: input.routeId,
+      user_id: input.userId,
+      planned_at: input.plannedAt,
+      note: input.note ?? null,
+      status: "planned"
+    })
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function listBikeMedia(bikeId: string, userId: string) {
+  const supabase = supabaseAdminForProject("sumo");
+
+  const { data: bike, error: bikeError } = await supabase
+    .from("bikes")
+    .select("id, owner_id")
+    .eq("id", bikeId)
+    .maybeSingle();
+  if (bikeError) throw new Error(bikeError.message);
+  if (!bike) throw new Error("BIKE_NOT_FOUND");
+  if (bike.owner_id !== userId) throw new Error("FORBIDDEN");
+
+  const { data, error } = await supabase.from("bike_media").select("*").eq("bike_id", bikeId).order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function createBikeMedia(input: {
+  bikeId: string;
+  uploadedBy: string;
+  mediaUrl: string;
+  caption?: string | null;
+}) {
+  const supabase = supabaseAdminForProject("sumo");
+  const { data: bike, error: bikeError } = await supabase
+    .from("bikes")
+    .select("id, owner_id")
+    .eq("id", input.bikeId)
+    .maybeSingle();
+  if (bikeError) throw new Error(bikeError.message);
+  if (!bike) throw new Error("BIKE_NOT_FOUND");
+  if (bike.owner_id !== input.uploadedBy) throw new Error("FORBIDDEN");
+
+  const { data, error } = await supabase
+    .from("bike_media")
+    .insert({
+      bike_id: input.bikeId,
+      uploaded_by: input.uploadedBy,
+      media_url: input.mediaUrl,
+      caption: input.caption ?? null
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
 }
 
 export async function createBike(userId: string, input: CreateBikeInput) {
@@ -324,6 +449,132 @@ export async function listActiveRiders(routeId: string) {
   }
 
   return data ?? [];
+}
+
+export async function getRoutePresence(routeId: string) {
+  const supabase = supabaseAdminForProject("sumo");
+
+  const { data, error } = await supabase
+    .from("route_presence_live")
+    .select(
+      "route_id, user_id, username, display_name, avatar_url, bike_id, bike_brand, bike_model, bike_nickname, checked_in_at"
+    )
+    .eq("route_id", routeId)
+    .order("checked_in_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const members = data ?? [];
+
+  return {
+    route_id: routeId,
+    count: members.length,
+    members
+  };
+}
+
+export async function checkInRoutePresence(input: CheckInPresenceInput) {
+  const supabase = supabaseAdminForProject("sumo");
+
+  if (input.bikeId) {
+    const { data: bike, error: bikeError } = await supabase
+      .from("bikes")
+      .select("id, owner_id")
+      .eq("id", input.bikeId)
+      .maybeSingle();
+
+    if (bikeError) {
+      throw new Error(bikeError.message);
+    }
+    if (!bike) {
+      throw new Error("BIKE_NOT_FOUND");
+    }
+    if (bike.owner_id !== input.userId) {
+      throw new Error("FORBIDDEN");
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const { data: updatedRows, error: updateError } = await supabase
+    .from("route_presence")
+    .update({
+      bike_id: input.bikeId ?? null,
+      last_seen_at: nowIso,
+      checked_out_at: null
+    })
+    .eq("route_id", input.routeId)
+    .eq("user_id", input.userId)
+    .is("checked_out_at", null)
+    .select("*");
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  if ((updatedRows ?? []).length > 0) {
+    return updatedRows?.[0];
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("route_presence")
+    .insert({
+      route_id: input.routeId,
+      user_id: input.userId,
+      bike_id: input.bikeId ?? null,
+      checked_in_at: nowIso,
+      last_seen_at: nowIso,
+      checked_out_at: null
+    })
+    .select("*")
+    .single();
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return inserted;
+}
+
+export async function touchRoutePresence(routeId: string, userId: string) {
+  const supabase = supabaseAdminForProject("sumo");
+  const nowIso = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("route_presence")
+    .update({
+      last_seen_at: nowIso
+    })
+    .eq("route_id", routeId)
+    .eq("user_id", userId)
+    .is("checked_out_at", null);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return { ok: true };
+}
+
+export async function checkOutRoutePresence(routeId: string, userId: string) {
+  const supabase = supabaseAdminForProject("sumo");
+  const nowIso = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("route_presence")
+    .update({
+      checked_out_at: nowIso
+    })
+    .eq("route_id", routeId)
+    .eq("user_id", userId)
+    .is("checked_out_at", null);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return { ok: true };
 }
 
 export async function getMyActiveSession(routeId: string, userId: string) {
@@ -509,7 +760,302 @@ export async function createSpot(userId: string, input: CreateSpotInput) {
   return data;
 }
 
+
+type PostMediaInput = {
+  media_url: string;
+  media_type?: "image" | "video";
+  thumb_url?: string | null;
+  sort_order?: number;
+};
+
+function normalizeMediaType(value: unknown): "image" | "video" {
+  return value === "video" ? "video" : "image";
+}
+
+function buildFeedPostResponse(
+  posts: any[],
+  likesRows: Array<{ post_id: string; user_id: string }>,
+  commentRows: Array<{ post_id: string }>,
+  viewerId: string | null
+) {
+  const likeCountMap = new Map<string, number>();
+  const commentCountMap = new Map<string, number>();
+  const likedByViewer = new Set<string>();
+
+  for (const row of likesRows) {
+    likeCountMap.set(row.post_id, (likeCountMap.get(row.post_id) ?? 0) + 1);
+    if (viewerId && row.user_id === viewerId) {
+      likedByViewer.add(row.post_id);
+    }
+  }
+
+  for (const row of commentRows) {
+    commentCountMap.set(row.post_id, (commentCountMap.get(row.post_id) ?? 0) + 1);
+  }
+
+  return posts.map((post) => ({
+    ...post,
+    post_media: [...(post.post_media ?? [])].sort(
+      (a: { sort_order?: number }, b: { sort_order?: number }) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    ),
+    likes_count: likeCountMap.get(post.id) ?? 0,
+    comments_count: commentCountMap.get(post.id) ?? 0,
+    liked_by_me: viewerId ? likedByViewer.has(post.id) : false
+  }));
+}
+
+export async function listFeedPosts(viewerId: string | null, limit = 20, offset = 0) {
+  const supabase = supabaseAdminForProject("sumo");
+  const from = Math.max(0, offset);
+  const to = Math.max(from, from + Math.max(1, Math.min(100, limit)) - 1);
+
+  const { data: posts, error } = await supabase
+    .from("posts")
+    .select(
+      "id,author_id,body,route_id,visibility,created_at,updated_at,profiles!posts_author_id_fkey(id,username,display_name,avatar_url),post_media(id,post_id,media_type,media_url,thumb_url,sort_order,created_at)"
+    )
+    .eq("visibility", "public")
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (error) throw new Error(error.message);
+  if (!posts || posts.length === 0) return [];
+
+  const postIds = posts.map((p: { id: string }) => p.id);
+
+  const { data: likesRows, error: likesError } = await supabase
+    .from("post_likes")
+    .select("post_id,user_id")
+    .in("post_id", postIds);
+  if (likesError) throw new Error(likesError.message);
+
+  const { data: commentRows, error: commentsError } = await supabase.from("post_comments").select("post_id").in("post_id", postIds);
+  if (commentsError) throw new Error(commentsError.message);
+
+  return buildFeedPostResponse(posts as any[], (likesRows ?? []) as any[], (commentRows ?? []) as any[], viewerId);
+}
+
+export async function createFeedPost(
+  userId: string,
+  input: {
+    body: string;
+    route_id?: string | null;
+    media?: PostMediaInput[];
+  }
+) {
+  const supabase = supabaseAdminForProject("sumo");
+
+  const cleanBody = input.body.trim();
+  if (!cleanBody) {
+    throw new Error("POST_BODY_REQUIRED");
+  }
+
+  const { data: post, error: postError } = await supabase
+    .from("posts")
+    .insert({
+      author_id: userId,
+      body: cleanBody,
+      route_id: input.route_id ?? null,
+      visibility: "public"
+    })
+    .select(
+      "id,author_id,body,route_id,visibility,created_at,updated_at,profiles!posts_author_id_fkey(id,username,display_name,avatar_url)"
+    )
+    .single();
+
+  if (postError) throw new Error(postError.message);
+
+  const mediaRows = (input.media ?? [])
+    .map((media, index) => ({
+      post_id: post.id,
+      media_type: normalizeMediaType(media.media_type),
+      media_url: String(media.media_url ?? "").trim(),
+      thumb_url: media.thumb_url ?? null,
+      sort_order: Number.isFinite(media.sort_order) ? Number(media.sort_order) : index
+    }))
+    .filter((row) => row.media_url.length > 0);
+
+  let insertedMedia: any[] = [];
+
+  if (mediaRows.length > 0) {
+    const { data, error: mediaError } = await supabase
+      .from("post_media")
+      .insert(mediaRows)
+      .select("id,post_id,media_type,media_url,thumb_url,sort_order,created_at")
+      .order("sort_order", { ascending: true });
+
+    if (mediaError) throw new Error(mediaError.message);
+    insertedMedia = data ?? [];
+  }
+
+  return {
+    ...post,
+    post_media: insertedMedia,
+    likes_count: 0,
+    comments_count: 0,
+    liked_by_me: false
+  };
+}
+
+export async function listProfileFeedPosts(profileId: string, viewerId: string | null, limit = 20, offset = 0) {
+  const supabase = supabaseAdminForProject("sumo");
+  const from = Math.max(0, offset);
+  const to = Math.max(from, from + Math.max(1, Math.min(100, limit)) - 1);
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id,username,display_name,avatar_url,bio,home_city")
+    .eq("id", profileId)
+    .maybeSingle();
+
+  if (profileError) throw new Error(profileError.message);
+  if (!profile) throw new Error("PROFILE_NOT_FOUND");
+
+  const { data: posts, error } = await supabase
+    .from("posts")
+    .select(
+      "id,author_id,body,route_id,visibility,created_at,updated_at,profiles!posts_author_id_fkey(id,username,display_name,avatar_url),post_media(id,post_id,media_type,media_url,thumb_url,sort_order,created_at)"
+    )
+    .eq("author_id", profileId)
+    .eq("visibility", "public")
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (error) throw new Error(error.message);
+  if (!posts || posts.length === 0) {
+    return { profile, posts: [] };
+  }
+
+  const postIds = posts.map((p: { id: string }) => p.id);
+
+  const { data: likesRows, error: likesError } = await supabase
+    .from("post_likes")
+    .select("post_id,user_id")
+    .in("post_id", postIds);
+  if (likesError) throw new Error(likesError.message);
+
+  const { data: commentRows, error: commentsError } = await supabase.from("post_comments").select("post_id").in("post_id", postIds);
+  if (commentsError) throw new Error(commentsError.message);
+
+  return {
+    profile,
+    posts: buildFeedPostResponse(posts as any[], (likesRows ?? []) as any[], (commentRows ?? []) as any[], viewerId)
+  };
+}
+
+export async function toggleFeedLike(postId: string, userId: string) {
+  const supabase = supabaseAdminForProject("sumo");
+
+  const { data: post, error: postError } = await supabase
+    .from("posts")
+    .select("id,visibility")
+    .eq("id", postId)
+    .maybeSingle();
+
+  if (postError) throw new Error(postError.message);
+  if (!post) throw new Error("POST_NOT_FOUND");
+  if (post.visibility !== "public") throw new Error("POST_NOT_VISIBLE");
+
+  const { data: existing, error: existingError } = await supabase
+    .from("post_likes")
+    .select("post_id,user_id")
+    .eq("post_id", postId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (existingError) throw new Error(existingError.message);
+
+  let liked: boolean;
+
+  if (existing) {
+    const { error: deleteError } = await supabase.from("post_likes").delete().eq("post_id", postId).eq("user_id", userId);
+    if (deleteError) throw new Error(deleteError.message);
+    liked = false;
+  } else {
+    const { error: insertError } = await supabase.from("post_likes").insert({ post_id: postId, user_id: userId });
+    if (insertError) throw new Error(insertError.message);
+    liked = true;
+  }
+
+  const { count, error: countError } = await supabase
+    .from("post_likes")
+    .select("post_id", { count: "exact", head: true })
+    .eq("post_id", postId);
+
+  if (countError) throw new Error(countError.message);
+
+  return {
+    liked,
+    likes_count: count ?? 0
+  };
+}
+
+export async function listFeedComments(postId: string, limit = 100) {
+  const supabase = supabaseAdminForProject("sumo");
+
+  const { data: comments, error } = await supabase
+    .from("post_comments")
+    .select(
+      "id,post_id,user_id,parent_comment_id,body,created_at,updated_at,profiles!post_comments_user_id_fkey(id,username,display_name,avatar_url)"
+    )
+    .eq("post_id", postId)
+    .order("created_at", { ascending: true })
+    .limit(Math.max(1, Math.min(300, limit)));
+
+  if (error) throw new Error(error.message);
+  return comments ?? [];
+}
+
+export async function createFeedComment(
+  postId: string,
+  userId: string,
+  input: { body: string; parent_comment_id?: string | null }
+) {
+  const supabase = supabaseAdminForProject("sumo");
+
+  const cleanBody = input.body.trim();
+  if (!cleanBody) throw new Error("COMMENT_BODY_REQUIRED");
+
+  const { data: post, error: postError } = await supabase
+    .from("posts")
+    .select("id,visibility")
+    .eq("id", postId)
+    .maybeSingle();
+
+  if (postError) throw new Error(postError.message);
+  if (!post) throw new Error("POST_NOT_FOUND");
+  if (post.visibility !== "public") throw new Error("POST_NOT_VISIBLE");
+
+  const { data: comment, error } = await supabase
+    .from("post_comments")
+    .insert({
+      post_id: postId,
+      user_id: userId,
+      parent_comment_id: input.parent_comment_id ?? null,
+      body: cleanBody
+    })
+    .select("id,post_id,user_id,parent_comment_id,body,created_at,updated_at")
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id,username,display_name,avatar_url")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profileError) throw new Error(profileError.message);
+
+  return {
+    ...comment,
+    profiles: profile ?? null
+  };
+}
 export function normalizeErrorMessage(error: unknown) {
   return asErrorMessage(error);
 }
+
+
+
 
