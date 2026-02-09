@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import type { NextResponse } from "next/server";
 import { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/app/api/pikudo/_lib/sessionPlayer";
@@ -36,32 +36,36 @@ function rateLimit(req: Request): NextResponse | null {
 }
 
 export async function GET(req: Request) {
-  const limited = rateLimit(req);
-  if (limited) return limited;
-
-  const supabase = supabaseAdmin();
-  let roomId = "";
   try {
-    const { player } = await requirePlayerFromSession(req);
-    roomId = player.room_id;
+    const limited = rateLimit(req);
+    if (limited) return limited;
+
+    const supabase = supabaseAdmin();
+    let roomId = "";
+    try {
+      const { player } = await requirePlayerFromSession(req);
+      roomId = player.room_id;
+    } catch {
+      return apiJson(req, { ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    const { data, error } = await supabase
+      .from("players")
+      .select("nickname,points")
+      .eq("room_id", roomId)
+      .order("points", { ascending: false })
+      .order("created_at", { ascending: true })
+      .limit(50)
+      .returns<LeaderRow[]>();
+
+    if (error) {
+      return apiJson(req, { ok: false, error: "LEADERBOARD_FAILED" }, { status: 500 });
+    }
+
+    return apiJson(req, { ok: true, leaders: data ?? [] });
   } catch {
-    return apiJson(req, { ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    return apiJson(req, { ok: false, error: "REQUEST_FAILED" }, { status: 500 });
   }
-
-  const { data, error } = await supabase
-    .from("players")
-    .select("nickname,points")
-    .eq("room_id", roomId)
-    .order("points", { ascending: false })
-    .order("created_at", { ascending: true })
-    .limit(50)
-    .returns<LeaderRow[]>();
-
-  if (error) {
-    return apiJson(req, { ok: false, error: error.message }, { status: 500 });
-  }
-
-  return apiJson(req, { ok: true, leaders: data ?? [] });
 }
 
 
