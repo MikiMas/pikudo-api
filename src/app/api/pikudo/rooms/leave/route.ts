@@ -27,12 +27,11 @@ export async function POST(req: Request) {
 
     const nowIso = new Date().toISOString();
     if (roomId) {
-      const { error: memberError } = await supabase
+      await supabase
         .from("room_members")
         .update({ left_at: nowIso, points_at_leave: pointsAtLeave, nickname_at_join: nicknameAtJoin })
         .eq("room_id", roomId)
         .eq("player_id", playerId);
-      if (memberError) return apiJson(req, { ok: false, error: "LEAVE_FAILED" }, { status: 500 });
     }
 
     // Keep session + player identity; only detach from the room.

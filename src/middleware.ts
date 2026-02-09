@@ -40,8 +40,8 @@ export function middleware(req: NextRequest) {
 
   const pathname = req.nextUrl.pathname;
 
-  // Avoid cloning large multipart bodies for upload endpoint.
-  if (pathname === "/api/upload") {
+  // Avoid cloning large multipart bodies for upload endpoints.
+  if (pathname === "/api/pikudo/upload" || pathname === "/api/sumo/storage/upload") {
     return NextResponse.next();
   }
 
