@@ -27,5 +27,14 @@ jobs:
 
             cd /var/www/pikudo-api
 
-            curl --fail --silent --show-error \
-              -X POST "http://127.0.0.1:3000/api/pikudo/cleanup"
+            response="$(curl --silent --show-error -w '\n%{http_code}' \
+              -X POST "http://127.0.0.1:3000/api/pikudo/cleanup")"
+
+            body="${response%$'\n'*}"
+            code="${response##*$'\n'}"
+
+            echo "$body"
+            if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+              echo "Cleanup failed with HTTP $code"
+              exit 1
+            fi
