@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     if (!Number.isFinite(startedAt.getTime())) {
       return apiJson(req, { ok: false, error: "GAME_NOT_STARTED" }, { status: 403 });
     }
-    const rounds = Math.min(9, Math.max(1, Math.floor(room.rounds ?? 1)));
+    const rounds = Math.min(10, Math.max(1, Math.floor(room.rounds ?? 1)));
     const endsAt = new Date(startedAt.getTime() + rounds * 30 * 60 * 1000);
     const now = new Date();
     if (now.getTime() >= endsAt.getTime()) return apiJson(req, { ok: false, error: "ROOM_ALREADY_ENDED" }, { status: 403 });

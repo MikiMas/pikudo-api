@@ -11,12 +11,14 @@ export async function POST(req: Request) {
   let playerId = "";
   let playerNickname = "";
   let playerPoints = 0;
+  let playerRoomId: string | null = null;
 
   try {
     const authed = await requirePlayerFromSession(req);
     playerId = authed.player.id;
     playerNickname = authed.player.nickname;
     playerPoints = authed.player.points ?? 0;
+    playerRoomId = authed.player.room_id ?? null;
   } catch (err) {
     const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
     const status = msg === "UNAUTHORIZED" ? 401 : 500;
@@ -24,20 +26,22 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { data: member } = await supabase
-      .from("room_members")
-      .select("room_id,role")
-      .eq("player_id", playerId)
-      .maybeSingle<{ room_id: string; role: string }>();
-
-    if (!member?.room_id) {
+    if (!playerRoomId) {
       const { error: detachError } = await supabase.from("players").update({ room_id: null, nickname: playerNickname }).eq("id", playerId);
       if (detachError) return apiJson(req, { ok: false, error: "LEAVE_FAILED" }, { status: 500 });
       return apiJson(req, { ok: true });
     }
-    if (member.role !== "owner") return apiJson(req, { ok: false, error: "NOT_ALLOWED" }, { status: 403 });
 
-    const roomId = member.room_id;
+    const roomId = playerRoomId;
+
+    const { data: member } = await supabase
+      .from("room_members")
+      .select("role")
+      .eq("room_id", roomId)
+      .eq("player_id", playerId)
+      .maybeSingle<{ role: string }>();
+
+    if ((member?.role ?? "") !== "owner") return apiJson(req, { ok: false, error: "NOT_ALLOWED" }, { status: 403 });
 
     const { data: players } = await supabase
       .from("players")
