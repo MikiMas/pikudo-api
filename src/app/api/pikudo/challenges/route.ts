@@ -32,37 +32,32 @@ export async function GET(req: Request) {
       .from("rooms")
       .select("id,starts_at,ends_at,status,rounds")
       .eq("id", roomId)
-      .maybeSingle<{ id: string; starts_at: string; ends_at: string; status: string }>();
+      .maybeSingle<{ id: string; starts_at: string; ends_at: string; status: string; rounds: number }>();
     if (roomError || !room) return apiJson(req, { ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
 
     const roomStatus = String((room as any)?.status ?? "").toLowerCase();
     if (roomStatus === "ended") {
-      return apiJson(req, { paused: false, state: "ended", blockStart: now.toISOString(), nextBlockInSec: 0 });
+      return apiJson(req, { paused: false, state: "ended", blockStart: now.toISOString(), nextBlockInSec: 0, nextBlockAt: now.toISOString(), serverNow: now.toISOString() });
+    }
+    if (roomStatus !== "running") {
+      return apiJson(req, { paused: false, state: "scheduled", blockStart: now.toISOString(), nextBlockInSec: 0, nextBlockAt: now.toISOString(), serverNow: now.toISOString() });
     }
 
-    const { data: settings } = await supabase
-      .from("room_settings")
-      .select("game_status,game_started_at")
-      .eq("room_id", roomId)
-      .maybeSingle<{ game_status: string; game_started_at: string | null }>();
-
-    const startedAtIso = ((settings as any)?.game_started_at as string | null) ?? null;
-    const startedAtFallback = roomStatus === "running" ? ((room as any)?.starts_at as string | null) ?? null : null;
-    const effectiveStartedAtIso = startedAtIso ?? startedAtFallback;
-
-    if (!effectiveStartedAtIso) {
-      return apiJson(req, { paused: false, state: "scheduled", blockStart: new Date().toISOString(), nextBlockInSec: 0 });
+    const startedAtIso = String((room as any)?.starts_at ?? "");
+    const startedAt = new Date(startedAtIso);
+    if (!Number.isFinite(startedAt.getTime())) {
+      return apiJson(req, { ok: false, error: "GAME_NOT_STARTED" }, { status: 409 });
     }
 
-    const startedAt = new Date(effectiveStartedAtIso);
     const rounds = Math.min(10, Math.max(1, Math.floor((room as any).rounds ?? 1)));
     const endsAt = new Date(startedAt.getTime() + rounds * 30 * 60 * 1000);
     if (now.getTime() >= endsAt.getTime()) {
-      return apiJson(req, { paused: false, state: "ended", blockStart: endsAt.toISOString(), nextBlockInSec: 0 });
+      return apiJson(req, { paused: false, state: "ended", blockStart: endsAt.toISOString(), nextBlockInSec: 0, nextBlockAt: endsAt.toISOString(), serverNow: now.toISOString() });
     }
 
     const blockStart = getBlockStartFromAnchor(now, startedAt);
     const nextBlockInSec = secondsToNextBlockFromAnchor(now, startedAt);
+    const nextBlockAt = new Date(blockStart.getTime() + 30 * 60 * 1000);
 
     // Pause is disabled in app flow; always treat as running here.
 
@@ -94,8 +89,12 @@ export async function GET(req: Request) {
 
     return apiJson(req, {
       paused: false,
+      state: "running",
       blockStart: blockStart.toISOString(),
       nextBlockInSec,
+      nextBlockAt: nextBlockAt.toISOString(),
+      serverNow: now.toISOString(),
+      startedAt: startedAt.toISOString(),
       challenges: (assigned ?? []).map((c) => ({
         id: c.player_challenge_id,
         title: c.title,

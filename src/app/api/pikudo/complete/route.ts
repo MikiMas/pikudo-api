@@ -31,22 +31,25 @@ export async function POST(req: Request) {
 
     const { data: room, error: roomError } = await supabase
       .from("rooms")
-      .select("rounds")
+      .select("rounds,status,starts_at")
       .eq("id", roomId)
-      .maybeSingle<{ rounds: number }>();
+      .maybeSingle<{ rounds: number; status: string; starts_at: string | null }>();
     if (roomError || !room) return apiJson(req, { ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
 
-    const { data: settings } = await supabase
-      .from("room_settings")
-      .select("game_started_at,game_status")
-      .eq("room_id", roomId)
-      .maybeSingle<{ game_started_at: string | null; game_status: string }>();
+    const roomStatus = String(room.status ?? "").toLowerCase();
+    if (roomStatus !== "running") {
+      if (roomStatus === "ended") return apiJson(req, { ok: false, error: "ROOM_ALREADY_ENDED" }, { status: 403 });
+      return apiJson(req, { ok: false, error: "GAME_NOT_STARTED" }, { status: 403 });
+    }
 
-    const startedAtIso = settings?.game_started_at ?? null;
+    const startedAtIso = room.starts_at ?? null;
     if (!startedAtIso) return apiJson(req, { ok: false, error: "GAME_NOT_STARTED" }, { status: 403 });
     // Pause is disabled in app flow; do not block completions.
 
     const startedAt = new Date(startedAtIso);
+    if (!Number.isFinite(startedAt.getTime())) {
+      return apiJson(req, { ok: false, error: "GAME_NOT_STARTED" }, { status: 403 });
+    }
     const rounds = Math.min(9, Math.max(1, Math.floor(room.rounds ?? 1)));
     const endsAt = new Date(startedAt.getTime() + rounds * 30 * 60 * 1000);
     const now = new Date();
