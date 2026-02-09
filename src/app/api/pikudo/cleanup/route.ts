@@ -184,7 +184,21 @@ async function deletePlayersByIds(
 export async function POST(req: Request) {
   try {
     const supabase = supabaseAdmin();
+    const runId = `cln_${Date.now().toString(36)}`;
+    const log = (step: string, extra?: Record<string, unknown>) => {
+      if (extra) {
+        console.log("[PIKUDO_CLEANUP]", runId, step, JSON.stringify(extra));
+        return;
+      }
+      console.log("[PIKUDO_CLEANUP]", runId, step);
+    };
+    const fail = (step: string, detail: string) => {
+      console.error("[PIKUDO_CLEANUP][ERROR]", runId, step, detail);
+      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step, detail, runId }, { status: 500 });
+    };
+
     const cutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    log("start", { cutoffIso });
 
     const { data: rooms, error: roomsError } = await supabase
       .from("rooms")
@@ -194,26 +208,25 @@ export async function POST(req: Request) {
       .lte("ends_at", cutoffIso)
       .limit(200)
       .returns<RoomRow[]>();
-    if (roomsError) {
-      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step: "load_rooms", detail: roomsError.message }, { status: 500 });
-    }
+    if (roomsError) return fail("load_rooms", roomsError.message);
 
     const roomRows = rooms ?? [];
     const roomIds = unique(roomRows.map((r) => r.id));
+    log("load_rooms_ok", { rooms: roomIds.length });
     if (roomIds.length === 0) {
-      return apiJson(req, { ok: true, deletedRooms: 0, deletedPlayerChallenges: 0, deletedPlayers: 0 });
+      log("nothing_to_cleanup");
+      return apiJson(req, { ok: true, deletedRooms: 0, deletedPlayerChallenges: 0, deletedPlayers: 0, runId });
     }
 
     const roomIdSet = new Set(roomIds);
     const roomById = new Map(roomRows.map((r) => [r.id, r]));
 
     const membersResult = await selectMembersByRoomIds(supabase, roomIds);
-    if (membersResult.error) {
-      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step: "load_members", detail: membersResult.error }, { status: 500 });
-    }
+    if (membersResult.error) return fail("load_members", membersResult.error);
 
     const memberRows = membersResult.data;
     const memberPlayerIds = unique(memberRows.map((m) => m.player_id));
+    log("load_members_ok", { members: memberRows.length, players: memberPlayerIds.length });
     const roomIdsByPlayer = new Map<string, string[]>();
     for (const m of memberRows) {
       const list = roomIdsByPlayer.get(m.player_id) ?? [];
@@ -222,15 +235,11 @@ export async function POST(req: Request) {
     }
 
     const playersResult = await selectPlayersByIds(supabase, memberPlayerIds);
-    if (playersResult.error) {
-      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step: "load_players", detail: playersResult.error }, { status: 500 });
-    }
+    if (playersResult.error) return fail("load_players", playersResult.error);
     const players = playersResult.data;
 
     const membershipsResult = await selectMembershipsByPlayerIds(supabase, memberPlayerIds);
-    if (membershipsResult.error) {
-      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step: "load_memberships", detail: membershipsResult.error }, { status: 500 });
-    }
+    if (membershipsResult.error) return fail("load_memberships", membershipsResult.error);
 
     const hasOutsideMembership = new Set<string>();
     for (const m of membershipsResult.data) {
@@ -250,11 +259,14 @@ export async function POST(req: Request) {
         .map((p) => p.id)
     );
     const playersToDeleteSet = new Set(playersToDelete);
+    log("players_resolution", {
+      playersLoaded: players.length,
+      toDetach: playersToDetach.length,
+      toDelete: playersToDelete.length
+    });
 
     const pcsResult = await selectPlayerChallengesByPlayerIds(supabase, memberPlayerIds);
-    if (pcsResult.error) {
-      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step: "load_player_challenges", detail: pcsResult.error }, { status: 500 });
-    }
+    if (pcsResult.error) return fail("load_player_challenges", pcsResult.error);
 
     const pcsToDelete: PlayerChallengeRow[] = [];
     for (const pc of pcsResult.data) {
@@ -287,6 +299,7 @@ export async function POST(req: Request) {
     }
 
     const pcIdsToDelete = unique(pcsToDelete.map((pc) => pc.id));
+    log("player_challenges_resolution", { loaded: pcsResult.data.length, toDelete: pcIdsToDelete.length });
 
     const retosPaths: string[] = [];
     const challengeMediaPaths: string[] = [];
@@ -299,53 +312,46 @@ export async function POST(req: Request) {
     }
 
     const removeRetosError = await removeStoragePaths(supabase, BUCKET_RETOS, retosPaths);
-    if (removeRetosError) {
-      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step: "remove_storage_retos", detail: removeRetosError }, { status: 500 });
-    }
+    if (removeRetosError) return fail("remove_storage_retos", removeRetosError);
 
     const removeChallengeMediaError = await removeStoragePaths(supabase, BUCKET_CHALLENGE_MEDIA, challengeMediaPaths);
-    if (removeChallengeMediaError) {
-      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step: "remove_storage_challenge_media", detail: removeChallengeMediaError }, { status: 500 });
-    }
+    if (removeChallengeMediaError) return fail("remove_storage_challenge_media", removeChallengeMediaError);
+    log("storage_cleanup_ok", { retosPaths: retosPaths.length, challengeMediaPaths: challengeMediaPaths.length });
 
     const deleteChallengesError = await deletePlayerChallengesByIds(supabase, pcIdsToDelete);
-    if (deleteChallengesError) {
-      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step: "delete_player_challenges", detail: deleteChallengesError }, { status: 500 });
-    }
+    if (deleteChallengesError) return fail("delete_player_challenges", deleteChallengesError);
 
     const { error: deleteMembersError } = await supabase.from("room_members").delete().in("room_id", roomIds);
-    if (deleteMembersError) {
-      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step: "delete_room_members", detail: deleteMembersError.message }, { status: 500 });
-    }
+    if (deleteMembersError) return fail("delete_room_members", deleteMembersError.message);
 
     const detachPlayersError = await updatePlayersRoomNullByIds(supabase, playersToDetach);
-    if (detachPlayersError) {
-      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step: "detach_players", detail: detachPlayersError }, { status: 500 });
-    }
+    if (detachPlayersError) return fail("detach_players", detachPlayersError);
 
     const deletePlayersError = await deletePlayersByIds(supabase, playersToDelete);
-    if (deletePlayersError) {
-      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step: "delete_players", detail: deletePlayersError }, { status: 500 });
-    }
+    if (deletePlayersError) return fail("delete_players", deletePlayersError);
+    log("db_cleanup_ok", { roomMembersDeleted: roomIds.length, playersDetached: playersToDetach.length, playersDeleted: playersToDelete.length });
 
     const { error: deleteSettingsError } = await supabase.from("room_settings").delete().in("room_id", roomIds);
-    if (deleteSettingsError) {
-      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step: "delete_room_settings", detail: deleteSettingsError.message }, { status: 500 });
-    }
+    if (deleteSettingsError) return fail("delete_room_settings", deleteSettingsError.message);
 
     const { error: deleteRoomsError } = await supabase.from("rooms").delete().in("id", roomIds);
-    if (deleteRoomsError) {
-      return apiJson(req, { ok: false, error: "CLEANUP_FAILED", step: "delete_rooms", detail: deleteRoomsError.message }, { status: 500 });
-    }
+    if (deleteRoomsError) return fail("delete_rooms", deleteRoomsError.message);
 
-    return apiJson(req, {
-      ok: true,
+    log("done", {
       deletedRooms: roomIds.length,
       deletedPlayerChallenges: pcIdsToDelete.length,
       deletedPlayers: playersToDelete.length
     });
+    return apiJson(req, {
+      ok: true,
+      deletedRooms: roomIds.length,
+      deletedPlayerChallenges: pcIdsToDelete.length,
+      deletedPlayers: playersToDelete.length,
+      runId
+    });
   } catch (err) {
     const detail = err instanceof Error ? err.message : "UNKNOWN";
+    console.error("[PIKUDO_CLEANUP][ERROR]", "fatal", detail);
     return apiJson(req, { ok: false, error: "CLEANUP_FAILED", detail }, { status: 500 });
   }
 }
