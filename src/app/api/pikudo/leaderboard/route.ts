@@ -1,4 +1,3 @@
-import type { NextResponse } from "next/server";
 import { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/app/api/pikudo/_lib/sessionPlayer";
@@ -6,40 +5,34 @@ import { requirePlayerFromSession } from "@/app/api/pikudo/_lib/sessionPlayer";
 export const runtime = "nodejs";
 
 type LeaderRow = { nickname: string; points: number };
+type CachedLeaders = { at: number; leaders: LeaderRow[] };
 
-const lastHitByIp = new Map<string, number>();
-const WINDOW_MS = 1000;
+// Small in-memory cache to collapse bursty polling from multiple devices.
+const leadersCacheByRoom = new Map<string, CachedLeaders>();
+const LEADERS_CACHE_TTL_MS = 1500;
 
-function getClientIp(req: Request): string {
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]?.trim() || "unknown";
-  return req.headers.get("x-real-ip") ?? "unknown";
+function getCachedLeaders(roomId: string): LeaderRow[] | null {
+  const cached = leadersCacheByRoom.get(roomId);
+  if (!cached) return null;
+  if (Date.now() - cached.at > LEADERS_CACHE_TTL_MS) {
+    leadersCacheByRoom.delete(roomId);
+    return null;
+  }
+  return cached.leaders;
 }
 
-function rateLimit(req: Request): NextResponse | null {
-  if (process.env.NODE_ENV !== "production") return null;
-  const ip = getClientIp(req);
-  const now = Date.now();
-  const last = lastHitByIp.get(ip) ?? 0;
-  if (now - last < WINDOW_MS) {
-    return apiJson(req, { ok: false, error: "RATE_LIMITED" }, { status: 429 });
-  }
-  lastHitByIp.set(ip, now);
-
-  if (lastHitByIp.size > 10_000) {
-    for (const [key, ts] of lastHitByIp) {
-      if (now - ts > 60_000) lastHitByIp.delete(key);
+function setCachedLeaders(roomId: string, leaders: LeaderRow[]): void {
+  leadersCacheByRoom.set(roomId, { at: Date.now(), leaders });
+  if (leadersCacheByRoom.size > 2000) {
+    const now = Date.now();
+    for (const [key, value] of leadersCacheByRoom) {
+      if (now - value.at > LEADERS_CACHE_TTL_MS * 4) leadersCacheByRoom.delete(key);
     }
   }
-
-  return null;
 }
 
 export async function GET(req: Request) {
   try {
-    const limited = rateLimit(req);
-    if (limited) return limited;
-
     const supabase = supabaseAdmin();
     let roomId = "";
     try {
@@ -48,6 +41,9 @@ export async function GET(req: Request) {
     } catch {
       return apiJson(req, { ok: false, error: "UNAUTHORIZED" }, { status: 401 });
     }
+
+    const cached = getCachedLeaders(roomId);
+    if (cached) return apiJson(req, { ok: true, leaders: cached });
 
     const { data, error } = await supabase
       .from("players")
@@ -62,10 +58,11 @@ export async function GET(req: Request) {
       return apiJson(req, { ok: false, error: "LEADERBOARD_FAILED" }, { status: 500 });
     }
 
-    return apiJson(req, { ok: true, leaders: data ?? [] });
+    const leaders = data ?? [];
+    setCachedLeaders(roomId, leaders);
+    return apiJson(req, { ok: true, leaders });
   } catch {
     return apiJson(req, { ok: false, error: "REQUEST_FAILED" }, { status: 500 });
   }
 }
-
 
