@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/app/api/pikudo/_lib/sessionPlayer";
+import { validateUuid } from "@/app/api/pikudo/_lib/validators";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,9 @@ export async function GET(req: Request) {
   try {
     const supabase = supabaseAdmin();
     const { player } = await requirePlayerFromSession(req);
+    if (!validateUuid(player.room_id)) {
+      return apiJson(req, { ok: false, error: "NO_ROOM" }, { status: 400 });
+    }
 
     const { data: room, error } = await supabase
       .from("rooms")

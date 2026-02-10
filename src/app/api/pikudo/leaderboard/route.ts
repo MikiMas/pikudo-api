@@ -1,6 +1,7 @@
 import { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/app/api/pikudo/_lib/sessionPlayer";
+import { validateUuid } from "@/app/api/pikudo/_lib/validators";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,9 @@ export async function GET(req: Request) {
     try {
       const { player } = await requirePlayerFromSession(req);
       roomId = player.room_id;
+      if (!validateUuid(roomId)) {
+        return apiJson(req, { ok: false, error: "NO_ROOM" }, { status: 400 });
+      }
     } catch {
       return apiJson(req, { ok: false, error: "UNAUTHORIZED" }, { status: 401 });
     }
@@ -65,4 +69,3 @@ export async function GET(req: Request) {
     return apiJson(req, { ok: false, error: "REQUEST_FAILED" }, { status: 500 });
   }
 }
-

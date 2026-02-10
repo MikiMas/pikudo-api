@@ -2,6 +2,7 @@ import { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/app/api/pikudo/_lib/sessionPlayer";
 import { getBlockStartFromAnchor, secondsToNextBlockFromAnchor } from "@/app/api/pikudo/_lib/timeBlock";
+import { validateUuid } from "@/app/api/pikudo/_lib/validators";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,9 @@ export async function GET(req: Request) {
       const { player } = await requirePlayerFromSession(req);
       playerId = player.id;
       roomId = player.room_id;
+      if (!validateUuid(roomId)) {
+        return apiJson(req, { ok: false, error: "NO_ROOM" }, { status: 400 });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "UNAUTHORIZED";
       const status = msg === "UNAUTHORIZED" ? 401 : 500;
