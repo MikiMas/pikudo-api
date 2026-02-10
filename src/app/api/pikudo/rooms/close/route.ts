@@ -7,7 +7,6 @@ import { validateRoomCode } from "@/app/api/pikudo/_lib/validators";
 export const runtime = "nodejs";
 
 const BUCKET_RETOS = "retos";
-const BUCKET_CHALLENGE_MEDIA = "challenge-media";
 
 type Body = { code?: unknown };
 
@@ -66,26 +65,23 @@ export async function POST(req: Request) {
 
   const { data: pcs } =
     playerIds.length === 0
-      ? { data: [] as { player_id: string; media_path: string | null; media_url: string | null }[] }
+      ? { data: [] as { player_id: string; media_url: string | null }[] }
       : await supabase
           .from("player_challenges")
-          .select("player_id,media_path,media_url")
+          .select("player_id,media_url")
           .in("player_id", playerIds)
-          .returns<{ player_id: string; media_path: string | null; media_url: string | null }[]>();
+          .returns<{ player_id: string; media_url: string | null }[]>();
 
   const retosPaths: string[] = [];
-  const challengeMediaPaths: string[] = [];
 
   for (const pc of pcs ?? []) {
-    if (pc.media_path) challengeMediaPaths.push(pc.media_path);
     if (pc.media_url) {
-      const p = pathFromPublicStorageUrl(pc.media_url, BUCKET_RETOS);
-      if (p) retosPaths.push(p);
+      const retosPath = pathFromPublicStorageUrl(pc.media_url, BUCKET_RETOS);
+      if (retosPath) retosPaths.push(retosPath);
     }
   }
 
   if (retosPaths.length) await supabase.storage.from(BUCKET_RETOS).remove(retosPaths);
-  if (challengeMediaPaths.length) await supabase.storage.from(BUCKET_CHALLENGE_MEDIA).remove(challengeMediaPaths);
 
   if (playerIds.length) {
     await supabase.from("player_challenges").delete().in("player_id", playerIds);

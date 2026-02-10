@@ -2,11 +2,10 @@ import { NextResponse } from "next/server";
 import { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/app/api/pikudo/_lib/sessionPlayer";
+import { validateUuid } from "@/app/api/pikudo/_lib/validators";
+import { getFinalRoomWindow } from "@/app/api/pikudo/final/_lib/roomWindow";
 
 export const runtime = "nodejs";
-
-type RoomRow = { id: string; name: string | null; status: string; starts_at: string; rounds: number | null };
-type RoomSettingsRow = { game_started_at: string | null };
 
 type LeaderRow = { id: string; nickname: string; points: number; joinedAt: string };
 type PlayerRow = { id: string; nickname: string; points: number; created_at?: string | null };
@@ -16,35 +15,6 @@ type RoomMemberRow = {
   points_at_leave: number | null;
   joined_at: string;
 };
-
-async function isRoomEnded(supabase: ReturnType<typeof supabaseAdmin>, roomId: string): Promise<boolean> {
-  const now = new Date();
-  const { data: room, error: roomError } = await supabase
-    .from("rooms")
-    .select("id,status,starts_at,rounds")
-    .eq("id", roomId)
-    .maybeSingle<RoomRow>();
-  if (roomError || !room) return false;
-
-  const roomStatus = String((room as any)?.status ?? "").toLowerCase();
-  if (roomStatus === "ended") return true;
-
-  const { data: settings } = await supabase
-    .from("room_settings")
-    .select("game_started_at")
-    .eq("room_id", roomId)
-    .maybeSingle<RoomSettingsRow>();
-
-  const startedAtIso = ((settings as any)?.game_started_at as string | null) ?? null;
-  const startedAtFallback = roomStatus === "running" ? ((room as any)?.starts_at as string | null) ?? null : null;
-  const effectiveStartedAtIso = startedAtIso ?? startedAtFallback;
-  if (!effectiveStartedAtIso) return false;
-
-  const startedAt = new Date(effectiveStartedAtIso);
-  const rounds = Math.min(10, Math.max(1, Math.floor((room as any).rounds ?? 1)));
-  const endsAt = new Date(startedAt.getTime() + rounds * 30 * 60 * 1000);
-  return now.getTime() >= endsAt.getTime();
-}
 
 export async function GET(req: Request) {
   const supabase = supabaseAdmin();
@@ -57,8 +27,11 @@ export async function GET(req: Request) {
     return apiJson(req, { ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
   }
 
-  const ended = await isRoomEnded(supabase, roomId);
-  if (!ended) return apiJson(req, { ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
+  if (!validateUuid(roomId)) return apiJson(req, { ok: false, error: "NO_ROOM" }, { status: 400 });
+
+  const roomWindow = await getFinalRoomWindow(supabase, roomId);
+  if (!roomWindow.exists) return apiJson(req, { ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
+  if (!roomWindow.ended) return apiJson(req, { ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
 
   const { data: room } = await supabase.from("rooms").select("name").eq("id", roomId).maybeSingle<{ name: string | null }>();
 

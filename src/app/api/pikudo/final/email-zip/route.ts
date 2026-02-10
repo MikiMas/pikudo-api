@@ -3,11 +3,11 @@ import { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromDevice } from "@/app/api/pikudo/_lib/sessionPlayer";
 import { createZipStore } from "@/app/api/pikudo/_lib/zip";
+import { validateUuid } from "@/app/api/pikudo/_lib/validators";
+import { getFinalRoomWindow } from "@/app/api/pikudo/final/_lib/roomWindow";
 
 export const runtime = "nodejs";
 
-type RoomRow = { id: string; status: string; starts_at: string; rounds: number | null; code: string };
-type RoomSettingsRow = { game_started_at: string | null };
 type MediaRow = { media_url: string | null; media_mime: string | null; media_type: string | null; player_id: string };
 type PlayerRow = { id: string; nickname: string };
 type RoomMemberRow = { player_id: string; nickname_at_join: string | null };
@@ -47,35 +47,6 @@ function safeFileName(input: string): string {
     .slice(0, 80);
 }
 
-async function isRoomEnded(supabase: ReturnType<typeof supabaseAdmin>, roomId: string): Promise<boolean> {
-  const now = new Date();
-  const { data: room, error: roomError } = await supabase
-    .from("rooms")
-    .select("id,status,starts_at,rounds")
-    .eq("id", roomId)
-    .maybeSingle<RoomRow>();
-  if (roomError || !room) return false;
-
-  const roomStatus = String((room as any)?.status ?? "").toLowerCase();
-  if (roomStatus === "ended") return true;
-
-  const { data: settings } = await supabase
-    .from("room_settings")
-    .select("game_started_at")
-    .eq("room_id", roomId)
-    .maybeSingle<RoomSettingsRow>();
-
-  const startedAtIso = ((settings as any)?.game_started_at as string | null) ?? null;
-  const startedAtFallback = roomStatus === "running" ? ((room as any)?.starts_at as string | null) ?? null : null;
-  const effectiveStartedAtIso = startedAtIso ?? startedAtFallback;
-  if (!effectiveStartedAtIso) return false;
-
-  const startedAt = new Date(effectiveStartedAtIso);
-  const rounds = Math.min(10, Math.max(1, Math.floor((room as any).rounds ?? 1)));
-  const endsAt = new Date(startedAt.getTime() + rounds * 30 * 60 * 1000);
-  return now.getTime() >= endsAt.getTime();
-}
-
 export async function POST(req: Request) {
   const supabase = supabaseAdmin();
   let roomId = "";
@@ -98,8 +69,13 @@ export async function POST(req: Request) {
   const attempts = attemptsByDevice.get(deviceId) ?? 0;
   if (attempts >= MAX_ATTEMPTS) return apiJson(req, { ok: false, error: "TOO_MANY_ATTEMPTS" }, { status: 429 });
 
-  const ended = await isRoomEnded(supabase, roomId);
-  if (!ended) return apiJson(req, { ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
+  if (!validateUuid(roomId)) return apiJson(req, { ok: false, error: "NO_ROOM" }, { status: 400 });
+  const roomWindow = await getFinalRoomWindow(supabase, roomId);
+  if (!roomWindow.exists) return apiJson(req, { ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
+  if (!roomWindow.ended) return apiJson(req, { ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
+  if (!roomWindow.startedAtIso || !roomWindow.endsAtIso) {
+    return apiJson(req, { ok: false, error: "ROOM_WINDOW_INVALID" }, { status: 500 });
+  }
 
   const webhookUrl = process.env.EMAIL_ZIP_WEBHOOK_URL ?? "";
   if (!webhookUrl) return apiJson(req, { ok: false, error: "EMAIL_NOT_CONFIGURED" }, { status: 500 });
@@ -133,6 +109,9 @@ export async function POST(req: Request) {
           .select("player_id,media_url,media_mime,media_type")
           .in("player_id", playerIds)
           .eq("completed", true)
+          .not("media_url", "is", null)
+          .gte("block_start", roomWindow.startedAtIso)
+          .lt("block_start", roomWindow.endsAtIso)
           .returns<MediaRow[]>();
 
   if (mediaError) return apiJson(req, { ok: false, error: mediaError.message }, { status: 500 });

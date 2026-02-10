@@ -4,7 +4,6 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const runtime = "nodejs";
 
 const BUCKET_RETOS = "retos";
-const BUCKET_CHALLENGE_MEDIA = "challenge-media";
 const IN_FILTER_CHUNK_SIZE = 100;
 const STORAGE_REMOVE_CHUNK_SIZE = 100;
 
@@ -15,7 +14,6 @@ type PlayerChallengeRow = {
   id: string;
   player_id: string;
   block_start: string | null;
-  media_path: string | null;
   media_url: string | null;
 };
 
@@ -126,7 +124,7 @@ async function selectPlayerChallengesByPlayerIds(
   for (const batch of chunkArray(playerIds, IN_FILTER_CHUNK_SIZE)) {
     const { data, error } = await supabase
       .from("player_challenges")
-      .select("id,player_id,block_start,media_path,media_url")
+      .select("id,player_id,block_start,media_url")
       .in("player_id", batch)
       .returns<PlayerChallengeRow[]>();
     if (error) return { data: [], error: error.message };
@@ -302,21 +300,16 @@ export async function POST(req: Request) {
     log("player_challenges_resolution", { loaded: pcsResult.data.length, toDelete: pcIdsToDelete.length });
 
     const retosPaths: string[] = [];
-    const challengeMediaPaths: string[] = [];
     for (const pc of pcsToDelete) {
-      if (pc.media_path) challengeMediaPaths.push(pc.media_path);
       if (pc.media_url) {
-        const p = pathFromPublicStorageUrl(pc.media_url, BUCKET_RETOS);
-        if (p) retosPaths.push(p);
+        const retosPath = pathFromPublicStorageUrl(pc.media_url, BUCKET_RETOS);
+        if (retosPath) retosPaths.push(retosPath);
       }
     }
 
     const removeRetosError = await removeStoragePaths(supabase, BUCKET_RETOS, retosPaths);
     if (removeRetosError) return fail("remove_storage_retos", removeRetosError);
-
-    const removeChallengeMediaError = await removeStoragePaths(supabase, BUCKET_CHALLENGE_MEDIA, challengeMediaPaths);
-    if (removeChallengeMediaError) return fail("remove_storage_challenge_media", removeChallengeMediaError);
-    log("storage_cleanup_ok", { retosPaths: retosPaths.length, challengeMediaPaths: challengeMediaPaths.length });
+    log("storage_cleanup_ok", { retosPaths: retosPaths.length });
 
     const deleteChallengesError = await deletePlayerChallengesByIds(supabase, pcIdsToDelete);
     if (deleteChallengesError) return fail("delete_player_challenges", deleteChallengesError);

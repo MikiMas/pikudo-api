@@ -3,11 +3,9 @@ import { apiJson } from "@/lib/apiJson";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requirePlayerFromSession } from "@/app/api/pikudo/_lib/sessionPlayer";
 import { validateUuid } from "@/app/api/pikudo/_lib/validators";
+import { getFinalRoomWindow } from "@/app/api/pikudo/final/_lib/roomWindow";
 
 export const runtime = "nodejs";
-
-type RoomRow = { id: string; status: string; starts_at: string; rounds: number | null };
-type RoomSettingsRow = { game_started_at: string | null };
 
 type ChallengeInfoRow = { id: string; title: string; description: string | null };
 type MediaRow = {
@@ -19,35 +17,6 @@ type MediaRow = {
   players: { id: string; nickname: string } | null;
 };
 type RoomMemberRow = { player_id: string; nickname_at_join: string | null };
-
-async function isRoomEnded(supabase: ReturnType<typeof supabaseAdmin>, roomId: string): Promise<boolean> {
-  const now = new Date();
-  const { data: room, error: roomError } = await supabase
-    .from("rooms")
-    .select("id,status,starts_at,rounds")
-    .eq("id", roomId)
-    .maybeSingle<RoomRow>();
-  if (roomError || !room) return false;
-
-  const roomStatus = String((room as any)?.status ?? "").toLowerCase();
-  if (roomStatus === "ended") return true;
-
-  const { data: settings } = await supabase
-    .from("room_settings")
-    .select("game_started_at")
-    .eq("room_id", roomId)
-    .maybeSingle<RoomSettingsRow>();
-
-  const startedAtIso = ((settings as any)?.game_started_at as string | null) ?? null;
-  const startedAtFallback = roomStatus === "running" ? ((room as any)?.starts_at as string | null) ?? null : null;
-  const effectiveStartedAtIso = startedAtIso ?? startedAtFallback;
-  if (!effectiveStartedAtIso) return false;
-
-  const startedAt = new Date(effectiveStartedAtIso);
-  const rounds = Math.min(10, Math.max(1, Math.floor((room as any).rounds ?? 1)));
-  const endsAt = new Date(startedAt.getTime() + rounds * 30 * 60 * 1000);
-  return now.getTime() >= endsAt.getTime();
-}
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -64,8 +33,11 @@ export async function GET(req: Request) {
     return apiJson(req, { ok: false, error: msg }, { status: msg === "UNAUTHORIZED" ? 401 : 500 });
   }
 
-  const ended = await isRoomEnded(supabase, roomId);
-  if (!ended) return apiJson(req, { ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
+  if (!validateUuid(roomId)) return apiJson(req, { ok: false, error: "NO_ROOM" }, { status: 400 });
+
+  const roomWindow = await getFinalRoomWindow(supabase, roomId);
+  if (!roomWindow.exists) return apiJson(req, { ok: false, error: "ROOM_NOT_FOUND" }, { status: 404 });
+  if (!roomWindow.ended) return apiJson(req, { ok: false, error: "GAME_NOT_ENDED" }, { status: 400 });
 
   const { data: members, error: membersError } = await supabase
     .from("room_members")
@@ -85,15 +57,21 @@ export async function GET(req: Request) {
   if (challengeError) return apiJson(req, { ok: false, error: challengeError.message }, { status: 500 });
   if (!challenge) return apiJson(req, { ok: false, error: "NOT_FOUND" }, { status: 404 });
 
-  const { data: rows, error: rowsError } = await supabase
-    .from("player_challenges")
-    .select("id,media_url,media_type,media_mime,completed_at, players ( id, nickname )")
-    .eq("challenge_id", challengeId!.trim())
-    .in("player_id", ids)
-    .not("media_url", "is", null)
-    .order("completed_at", { ascending: false })
-    .limit(4000)
-    .returns<MediaRow[]>();
+  const { data: rows, error: rowsError } =
+    roomWindow.startedAtIso && roomWindow.endsAtIso
+      ? await supabase
+          .from("player_challenges")
+          .select("id,media_url,media_type,media_mime,completed_at, players ( id, nickname )")
+          .eq("challenge_id", challengeId!.trim())
+          .in("player_id", ids)
+          .eq("completed", true)
+          .not("media_url", "is", null)
+          .gte("block_start", roomWindow.startedAtIso)
+          .lt("block_start", roomWindow.endsAtIso)
+          .order("completed_at", { ascending: false })
+          .limit(4000)
+          .returns<MediaRow[]>()
+      : { data: [] as MediaRow[], error: null };
   if (rowsError) return apiJson(req, { ok: false, error: rowsError.message }, { status: 500 });
 
   const nicknameById = new Map((members ?? []).map((m) => [m.player_id, m.nickname_at_join]));
