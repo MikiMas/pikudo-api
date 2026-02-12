@@ -7,7 +7,7 @@ const BUCKET_RETOS = "retos";
 const IN_FILTER_CHUNK_SIZE = 100;
 const STORAGE_REMOVE_CHUNK_SIZE = 100;
 
-type RoomRow = { id: string; starts_at: string | null; ends_at: string | null };
+type RoomRow = { id: string; status: string | null; starts_at: string | null; ends_at: string | null };
 type RoomMemberRow = { room_id: string; player_id: string };
 type PlayerRow = { id: string; room_id: string | null };
 type PlayerChallengeRow = {
@@ -97,6 +97,24 @@ async function selectPlayersByIds(
   return { data: all, error: null };
 }
 
+async function selectPlayersByRoomIds(
+  supabase: ReturnType<typeof supabaseAdmin>,
+  roomIds: string[]
+): Promise<{ data: PlayerRow[]; error: string | null }> {
+  if (roomIds.length === 0) return { data: [], error: null };
+  const all: PlayerRow[] = [];
+  for (const batch of chunkArray(roomIds, IN_FILTER_CHUNK_SIZE)) {
+    const { data, error } = await supabase
+      .from("players")
+      .select("id,room_id")
+      .in("room_id", batch)
+      .returns<PlayerRow[]>();
+    if (error) return { data: [], error: error.message };
+    all.push(...(data ?? []));
+  }
+  return { data: all, error: null };
+}
+
 async function selectMembershipsByPlayerIds(
   supabase: ReturnType<typeof supabaseAdmin>,
   playerIds: string[]
@@ -168,17 +186,6 @@ async function updatePlayersRoomNullByIds(
   return null;
 }
 
-async function deletePlayersByIds(
-  supabase: ReturnType<typeof supabaseAdmin>,
-  ids: string[]
-): Promise<string | null> {
-  for (const batch of chunkArray(unique(ids), IN_FILTER_CHUNK_SIZE)) {
-    const { error } = await supabase.from("players").delete().in("id", batch);
-    if (error) return error.message;
-  }
-  return null;
-}
-
 export async function POST(req: Request) {
   try {
     const supabase = supabaseAdmin();
@@ -200,8 +207,7 @@ export async function POST(req: Request) {
 
     const { data: rooms, error: roomsError } = await supabase
       .from("rooms")
-      .select("id,starts_at,ends_at")
-      .eq("status", "ended")
+      .select("id,status,starts_at,ends_at")
       .not("ends_at", "is", null)
       .lte("ends_at", cutoffIso)
       .limit(200)
@@ -210,7 +216,12 @@ export async function POST(req: Request) {
 
     const roomRows = rooms ?? [];
     const roomIds = unique(roomRows.map((r) => r.id));
-    log("load_rooms_ok", { rooms: roomIds.length });
+    const roomsByStatus = roomRows.reduce<Record<string, number>>((acc, room) => {
+      const status = String(room.status ?? "unknown").toLowerCase();
+      acc[status] = (acc[status] ?? 0) + 1;
+      return acc;
+    }, {});
+    log("load_rooms_ok", { rooms: roomIds.length, byStatus: roomsByStatus });
     if (roomIds.length === 0) {
       log("nothing_to_cleanup");
       return apiJson(req, { ok: true, deletedRooms: 0, deletedPlayerChallenges: 0, deletedPlayers: 0, runId });
@@ -239,28 +250,13 @@ export async function POST(req: Request) {
     const membershipsResult = await selectMembershipsByPlayerIds(supabase, memberPlayerIds);
     if (membershipsResult.error) return fail("load_memberships", membershipsResult.error);
 
-    const hasOutsideMembership = new Set<string>();
-    for (const m of membershipsResult.data) {
-      if (!roomIdSet.has(m.room_id)) hasOutsideMembership.add(m.player_id);
-    }
-
-    const playersToDelete = unique(
-      players
-        .filter((p) => !hasOutsideMembership.has(p.id))
-        .filter((p) => !p.room_id || roomIdSet.has(p.room_id))
-        .map((p) => p.id)
-    );
-    const playersToDetach = unique(
-      players
-        .filter((p) => hasOutsideMembership.has(p.id))
-        .filter((p) => Boolean(p.room_id) && roomIdSet.has(p.room_id as string))
-        .map((p) => p.id)
-    );
-    const playersToDeleteSet = new Set(playersToDelete);
+    const playersByRoomResult = await selectPlayersByRoomIds(supabase, roomIds);
+    if (playersByRoomResult.error) return fail("load_players_by_room", playersByRoomResult.error);
+    const playersToDetach = unique(playersByRoomResult.data.map((p) => p.id));
     log("players_resolution", {
       playersLoaded: players.length,
       toDetach: playersToDetach.length,
-      toDelete: playersToDelete.length
+      toDelete: 0
     });
 
     const pcsResult = await selectPlayerChallengesByPlayerIds(supabase, memberPlayerIds);
@@ -268,11 +264,6 @@ export async function POST(req: Request) {
 
     const pcsToDelete: PlayerChallengeRow[] = [];
     for (const pc of pcsResult.data) {
-      if (playersToDeleteSet.has(pc.player_id)) {
-        pcsToDelete.push(pc);
-        continue;
-      }
-
       const relatedRooms = roomIdsByPlayer.get(pc.player_id) ?? [];
       const pcTs = parseTime(pc.block_start);
 
@@ -319,10 +310,7 @@ export async function POST(req: Request) {
 
     const detachPlayersError = await updatePlayersRoomNullByIds(supabase, playersToDetach);
     if (detachPlayersError) return fail("detach_players", detachPlayersError);
-
-    const deletePlayersError = await deletePlayersByIds(supabase, playersToDelete);
-    if (deletePlayersError) return fail("delete_players", deletePlayersError);
-    log("db_cleanup_ok", { roomMembersDeleted: roomIds.length, playersDetached: playersToDetach.length, playersDeleted: playersToDelete.length });
+    log("db_cleanup_ok", { roomMembersDeleted: roomIds.length, playersDetached: playersToDetach.length, playersDeleted: 0 });
 
     const { error: deleteSettingsError } = await supabase.from("room_settings").delete().in("room_id", roomIds);
     if (deleteSettingsError) return fail("delete_room_settings", deleteSettingsError.message);
@@ -333,13 +321,13 @@ export async function POST(req: Request) {
     log("done", {
       deletedRooms: roomIds.length,
       deletedPlayerChallenges: pcIdsToDelete.length,
-      deletedPlayers: playersToDelete.length
+      deletedPlayers: 0
     });
     return apiJson(req, {
       ok: true,
       deletedRooms: roomIds.length,
       deletedPlayerChallenges: pcIdsToDelete.length,
-      deletedPlayers: playersToDelete.length,
+      deletedPlayers: 0,
       runId
     });
   } catch (err) {
