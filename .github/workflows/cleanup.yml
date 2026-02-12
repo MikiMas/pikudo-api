@@ -19,9 +19,13 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
+            event_name="${{ github.event_name }}"
+            madrid_hour="$(TZ=Europe/Madrid date +%H)"
 
-            if [ "$(TZ=Europe/Madrid date +%H:%M)" != "20:20" ]; then
-              echo "Skipping cleanup outside 20:20 Europe/Madrid."
+            # Scheduled runs: allow only the 20:xx Europe/Madrid window.
+            # Manual runs (workflow_dispatch) are always allowed.
+            if [ "$event_name" = "schedule" ] && [ "$madrid_hour" != "20" ]; then
+              echo "Skipping scheduled cleanup outside 20:00-20:59 Europe/Madrid."
               exit 0
             fi
 
