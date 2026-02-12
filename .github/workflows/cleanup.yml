@@ -2,9 +2,9 @@ name: Cleanup Ended Rooms
 
 on:
   schedule:
-    # About 20:20 Europe/Madrid, handling DST (CET/CEST)
-    - cron: "20 18 * * *"
-    - cron: "20 19 * * *"
+    # About 08:00 Europe/Madrid, handling DST (CET/CEST)
+    - cron: "0 6 * * *"
+    - cron: "0 7 * * *"
   workflow_dispatch:
 
 jobs:
@@ -22,10 +22,10 @@ jobs:
             event_name="${{ github.event_name }}"
             madrid_hour="$(TZ=Europe/Madrid date +%H)"
 
-            # Scheduled runs: allow only the 20:xx Europe/Madrid window.
+            # Scheduled runs: allow only the 08:xx Europe/Madrid window.
             # Manual runs (workflow_dispatch) are always allowed.
-            if [ "$event_name" = "schedule" ] && [ "$madrid_hour" != "20" ]; then
-              echo "Skipping scheduled cleanup outside 20:00-20:59 Europe/Madrid."
+            if [ "$event_name" = "schedule" ] && [ "$madrid_hour" != "08" ]; then
+              echo "Skipping scheduled cleanup outside 08:00-08:59 Europe/Madrid."
               exit 0
             fi
 
