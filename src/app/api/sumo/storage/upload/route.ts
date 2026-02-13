@@ -1,8 +1,10 @@
 import { randomUUID } from "crypto";
+import { createClient } from "@supabase/supabase-js";
 
 import { apiJson } from "@/lib/apiJson";
 import { requireSumoUser } from "@/app/api/sumo/_lib/auth";
 import { supabaseAdminForProject } from "@/lib/supabaseAdmin";
+import { getSupabaseProjectEnv, requireSupabaseProjectEnv } from "@/lib/supabaseProjects";
 
 export const runtime = "nodejs";
 
@@ -56,6 +58,15 @@ function buildStoragePath(folderKey: FolderKey, userId: string, mime: string) {
   return `sumo/${folderPath}/${safeUserId}/${yyyy}/${mm}/${dd}/${filename}`;
 }
 
+function isRlsStorageError(message: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("row level security") ||
+    normalized.includes("row-level security") ||
+    normalized.includes("violates row-level security policy")
+  );
+}
+
 export async function POST(req: Request) {
   try {
     const user = await requireSumoUser(req);
@@ -87,11 +98,37 @@ export async function POST(req: Request) {
     const path = buildStoragePath(folderKey, user.id, mime);
     const bytes = new Uint8Array(await file.arrayBuffer());
 
-    const supabase = supabaseAdminForProject("sumo");
-    const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, bytes, {
+    const adminClient = supabaseAdminForProject("sumo");
+    let uploadError: { message?: string } | null = null;
+
+    const firstUpload = await adminClient.storage.from(BUCKET).upload(path, bytes, {
       contentType: mime,
       upsert: false
     });
+    uploadError = firstUpload.error;
+
+    if (uploadError?.message && isRlsStorageError(uploadError.message)) {
+      const sumoAnonKey = getSupabaseProjectEnv("sumo", "anon");
+      if (sumoAnonKey) {
+        const userScopedClient = createClient(requireSupabaseProjectEnv("sumo", "url"), sumoAnonKey, {
+          global: {
+            headers: {
+              Authorization: `Bearer ${user.accessToken}`
+            }
+          },
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false
+          }
+        });
+
+        const fallbackUpload = await userScopedClient.storage.from(BUCKET).upload(path, bytes, {
+          contentType: mime,
+          upsert: false
+        });
+        uploadError = fallbackUpload.error;
+      }
+    }
 
     if (uploadError) {
       return apiJson(
@@ -105,7 +142,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const publicUrl = supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+    const publicUrl = adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
     return apiJson(
       req,
       {

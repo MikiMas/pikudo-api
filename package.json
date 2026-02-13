@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
 "scripts": {
-  "dev": "cross-env NEXT_DISABLE_WEBPACK_CACHE=1 npm exec -- next dev",
+  "dev": "cross-env NEXT_DISABLE_WEBPACK_CACHE=1 next dev",
   "clean": "rimraf .next",
   "dev:clean": "npm run clean && npm run dev",
-  "build": "npm exec -- next build",
-  "start": "npm exec -- next start",
-  "lint": "npm exec -- next lint",
+  "build": "next build",
+  "start": "next start",
+  "lint": "next lint",
   "seed:challenges": "tsx scripts/seedChallenges.ts",
   "seed": "npm run seed:challenges"
 }

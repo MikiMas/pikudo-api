@@ -28,11 +28,16 @@ type CreateBikeInput = {
   is_public?: boolean;
 };
 
-type CreateBikeModInput = {
-  bike_id: string;
-  name: string;
-  category?: string;
+type UpdateBikeInput = {
+  brand?: string;
+  model?: string;
+  year?: number | null;
+  nickname?: string | null;
+  displacement_cc?: number | null;
+  plate?: string | null;
+  photo_url?: string | null;
   notes?: string | null;
+  is_public?: boolean;
 };
 
 type CreateSpotInput = {
@@ -146,7 +151,7 @@ export async function listGarage(userId: string) {
   const supabase = supabaseAdminForProject("sumo");
   const { data, error } = await supabase
     .from("bikes")
-    .select("*, bike_mods(*), bike_media(*)")
+    .select("*, bike_media(*)")
     .eq("owner_id", userId)
     .order("created_at", { ascending: false });
 
@@ -155,6 +160,87 @@ export async function listGarage(userId: string) {
   }
 
   return data ?? [];
+}
+
+export async function listPublicGarageByProfileId(profileId: string) {
+  const supabase = supabaseAdminForProject("sumo");
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", profileId)
+    .maybeSingle();
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+  if (!profile) {
+    throw new Error("PROFILE_NOT_FOUND");
+  }
+
+  const { data, error } = await supabase
+    .from("bikes")
+    .select("*, bike_media(*)")
+    .eq("owner_id", profileId)
+    .eq("is_public", true)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ?? [];
+}
+
+export async function getGarageBike(userId: string, bikeId: string) {
+  const supabase = supabaseAdminForProject("sumo");
+  const { data, error } = await supabase
+    .from("bikes")
+    .select("*, bike_media(*)")
+    .eq("id", bikeId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("BIKE_NOT_FOUND");
+  if (data.owner_id !== userId) throw new Error("FORBIDDEN");
+
+  return data;
+}
+
+export async function updateGarageBike(userId: string, bikeId: string, input: UpdateBikeInput) {
+  const supabase = supabaseAdminForProject("sumo");
+  const { data: bike, error: bikeError } = await supabase
+    .from("bikes")
+    .select("id, owner_id")
+    .eq("id", bikeId)
+    .maybeSingle();
+
+  if (bikeError) throw new Error(bikeError.message);
+  if (!bike) throw new Error("BIKE_NOT_FOUND");
+  if (bike.owner_id !== userId) throw new Error("FORBIDDEN");
+
+  const payload: Record<string, unknown> = {};
+  if (typeof input.brand === "string") payload.brand = input.brand;
+  if (typeof input.model === "string") payload.model = input.model;
+  if ("year" in input) payload.year = input.year ?? null;
+  if ("nickname" in input) payload.nickname = input.nickname ?? null;
+  if ("displacement_cc" in input) payload.displacement_cc = input.displacement_cc ?? null;
+  if ("plate" in input) payload.plate = input.plate ?? null;
+  if ("photo_url" in input) payload.photo_url = input.photo_url ?? null;
+  if ("notes" in input) payload.notes = input.notes ?? null;
+  if ("is_public" in input && typeof input.is_public === "boolean") payload.is_public = input.is_public;
+
+  if (Object.keys(payload).length > 0) {
+    const { error: updateError } = await supabase
+      .from("bikes")
+      .update(payload)
+      .eq("id", bikeId)
+      .eq("owner_id", userId);
+
+    if (updateError) throw new Error(updateError.message);
+  }
+
+  return getGarageBike(userId, bikeId);
 }
 
 export async function listRouteMedia(routeId: string) {
@@ -291,37 +377,6 @@ export async function createBike(userId: string, input: CreateBikeInput) {
   };
 
   const { data, error } = await supabase.from("bikes").insert(payload).select("*").single();
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data;
-}
-
-export async function createBikeMod(userId: string, input: CreateBikeModInput) {
-  const supabase = supabaseAdminForProject("sumo");
-
-  const { data: bike, error: bikeError } = await supabase
-    .from("bikes")
-    .select("id, owner_id")
-    .eq("id", input.bike_id)
-    .maybeSingle();
-
-  if (bikeError) throw new Error(bikeError.message);
-  if (!bike) throw new Error("BIKE_NOT_FOUND");
-  if (bike.owner_id !== userId) throw new Error("FORBIDDEN");
-
-  const { data, error } = await supabase
-    .from("bike_mods")
-    .insert({
-      bike_id: input.bike_id,
-      name: input.name,
-      category: input.category ?? "general",
-      notes: input.notes ?? null
-    })
-    .select("*")
-    .single();
-
   if (error) {
     throw new Error(error.message);
   }
@@ -772,39 +827,49 @@ function normalizeMediaType(value: unknown): "image" | "video" {
   return value === "video" ? "video" : "image";
 }
 
-function buildFeedPostResponse(
-  posts: any[],
-  likesRows: Array<{ post_id: string; user_id: string }>,
-  commentRows: Array<{ post_id: string }>,
-  viewerId: string | null
-) {
-  const likeCountMap = new Map<string, number>();
-  const commentCountMap = new Map<string, number>();
-  const likedByViewer = new Set<string>();
-
-  for (const row of likesRows) {
-    likeCountMap.set(row.post_id, (likeCountMap.get(row.post_id) ?? 0) + 1);
-    if (viewerId && row.user_id === viewerId) {
-      likedByViewer.add(row.post_id);
-    }
-  }
-
-  for (const row of commentRows) {
-    commentCountMap.set(row.post_id, (commentCountMap.get(row.post_id) ?? 0) + 1);
-  }
-
+function buildFeedPostResponse(posts: any[]) {
   return posts.map((post) => ({
     ...post,
     post_media: [...(post.post_media ?? [])].sort(
       (a: { sort_order?: number }, b: { sort_order?: number }) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
     ),
-    likes_count: likeCountMap.get(post.id) ?? 0,
-    comments_count: commentCountMap.get(post.id) ?? 0,
-    liked_by_me: viewerId ? likedByViewer.has(post.id) : false
+    likes_count: 0,
+    comments_count: 0,
+    liked_by_me: false
   }));
 }
 
-export async function listFeedPosts(viewerId: string | null, limit = 20, offset = 0) {
+async function attachPostMediaToPosts(supabase: ReturnType<typeof supabaseAdminForProject>, posts: any[]) {
+  if (!posts.length) {
+    return posts;
+  }
+
+  const postIds = posts.map((post: { id: string }) => post.id);
+  const { data: mediaRows, error: mediaError } = await supabase
+    .from("post_media")
+    .select("id,post_id,media_type,media_url,thumb_url,sort_order,created_at")
+    .in("post_id", postIds)
+    .order("sort_order", { ascending: true });
+
+  if (mediaError) throw new Error(mediaError.message);
+
+  const mediaByPost = new Map<string, any[]>();
+  for (const media of mediaRows ?? []) {
+    const group = mediaByPost.get(media.post_id);
+    if (group) {
+      group.push(media);
+    } else {
+      mediaByPost.set(media.post_id, [media]);
+    }
+  }
+
+  return posts.map((post) => ({
+    ...post,
+    post_media: mediaByPost.get(post.id) ?? []
+  }));
+}
+
+export async function listFeedPosts(_viewerId: string | null, limit = 20, offset = 0) {
   const supabase = supabaseAdminForProject("sumo");
   const from = Math.max(0, offset);
   const to = Math.max(from, from + Math.max(1, Math.min(100, limit)) - 1);
@@ -812,7 +877,7 @@ export async function listFeedPosts(viewerId: string | null, limit = 20, offset 
   const { data: posts, error } = await supabase
     .from("posts")
     .select(
-      "id,author_id,body,route_id,visibility,created_at,updated_at,profiles!posts_author_id_fkey(id,username,display_name,avatar_url),post_media(id,post_id,media_type,media_url,thumb_url,sort_order,created_at)"
+      "id,author_id,body,route_id,visibility,created_at,updated_at,profiles!posts_author_id_fkey(id,username,display_name,avatar_url)"
     )
     .eq("visibility", "public")
     .order("created_at", { ascending: false })
@@ -821,18 +886,30 @@ export async function listFeedPosts(viewerId: string | null, limit = 20, offset 
   if (error) throw new Error(error.message);
   if (!posts || posts.length === 0) return [];
 
-  const postIds = posts.map((p: { id: string }) => p.id);
+  const postsWithMedia = await attachPostMediaToPosts(supabase, posts as any[]);
+  return buildFeedPostResponse(postsWithMedia);
+}
 
-  const { data: likesRows, error: likesError } = await supabase
-    .from("post_likes")
-    .select("post_id,user_id")
-    .in("post_id", postIds);
-  if (likesError) throw new Error(likesError.message);
+export async function listRouteFeedPosts(routeId: string, limit = 20, offset = 0) {
+  const supabase = supabaseAdminForProject("sumo");
+  const from = Math.max(0, offset);
+  const to = Math.max(from, from + Math.max(1, Math.min(100, limit)) - 1);
 
-  const { data: commentRows, error: commentsError } = await supabase.from("post_comments").select("post_id").in("post_id", postIds);
-  if (commentsError) throw new Error(commentsError.message);
+  const { data: posts, error } = await supabase
+    .from("posts")
+    .select(
+      "id,author_id,body,route_id,visibility,created_at,updated_at,profiles!posts_author_id_fkey(id,username,display_name,avatar_url)"
+    )
+    .eq("route_id", routeId)
+    .eq("visibility", "public")
+    .order("created_at", { ascending: false })
+    .range(from, to);
 
-  return buildFeedPostResponse(posts as any[], (likesRows ?? []) as any[], (commentRows ?? []) as any[], viewerId);
+  if (error) throw new Error(error.message);
+  if (!posts || posts.length === 0) return [];
+
+  const postsWithMedia = await attachPostMediaToPosts(supabase, posts as any[]);
+  return buildFeedPostResponse(postsWithMedia);
 }
 
 export async function createFeedPost(
@@ -850,12 +927,26 @@ export async function createFeedPost(
     throw new Error("POST_BODY_REQUIRED");
   }
 
+  const routeId = typeof input.route_id === "string" ? input.route_id.trim() : "";
+  if (!routeId) {
+    throw new Error("ROUTE_ID_REQUIRED");
+  }
+
+  const { data: route, error: routeError } = await supabase
+    .from("routes")
+    .select("id")
+    .eq("id", routeId)
+    .maybeSingle();
+
+  if (routeError) throw new Error(routeError.message);
+  if (!route) throw new Error("ROUTE_NOT_FOUND");
+
   const { data: post, error: postError } = await supabase
     .from("posts")
     .insert({
       author_id: userId,
       body: cleanBody,
-      route_id: input.route_id ?? null,
+      route_id: routeId,
       visibility: "public"
     })
     .select(
@@ -897,7 +988,7 @@ export async function createFeedPost(
   };
 }
 
-export async function listProfileFeedPosts(profileId: string, viewerId: string | null, limit = 20, offset = 0) {
+export async function listProfileFeedPosts(profileId: string, _viewerId: string | null, limit = 20, offset = 0) {
   const supabase = supabaseAdminForProject("sumo");
   const from = Math.max(0, offset);
   const to = Math.max(from, from + Math.max(1, Math.min(100, limit)) - 1);
@@ -914,7 +1005,7 @@ export async function listProfileFeedPosts(profileId: string, viewerId: string |
   const { data: posts, error } = await supabase
     .from("posts")
     .select(
-      "id,author_id,body,route_id,visibility,created_at,updated_at,profiles!posts_author_id_fkey(id,username,display_name,avatar_url),post_media(id,post_id,media_type,media_url,thumb_url,sort_order,created_at)"
+      "id,author_id,body,route_id,visibility,created_at,updated_at,profiles!posts_author_id_fkey(id,username,display_name,avatar_url)"
     )
     .eq("author_id", profileId)
     .eq("visibility", "public")
@@ -926,20 +1017,11 @@ export async function listProfileFeedPosts(profileId: string, viewerId: string |
     return { profile, posts: [] };
   }
 
-  const postIds = posts.map((p: { id: string }) => p.id);
-
-  const { data: likesRows, error: likesError } = await supabase
-    .from("post_likes")
-    .select("post_id,user_id")
-    .in("post_id", postIds);
-  if (likesError) throw new Error(likesError.message);
-
-  const { data: commentRows, error: commentsError } = await supabase.from("post_comments").select("post_id").in("post_id", postIds);
-  if (commentsError) throw new Error(commentsError.message);
+  const postsWithMedia = await attachPostMediaToPosts(supabase, posts as any[]);
 
   return {
     profile,
-    posts: buildFeedPostResponse(posts as any[], (likesRows ?? []) as any[], (commentRows ?? []) as any[], viewerId)
+    posts: buildFeedPostResponse(postsWithMedia)
   };
 }
 

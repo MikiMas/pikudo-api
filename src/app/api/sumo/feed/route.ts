@@ -56,7 +56,10 @@ export async function POST(req: Request) {
       return apiJson(req, { ok: false, error: "POST_BODY_REQUIRED" }, { status: 400 });
     }
 
-    const routeId = typeof body.route_id === "string" && body.route_id.trim() ? body.route_id.trim() : null;
+    const routeId = typeof body.route_id === "string" ? body.route_id.trim() : "";
+    if (!routeId) {
+      return apiJson(req, { ok: false, error: "ROUTE_ID_REQUIRED" }, { status: 400 });
+    }
 
     const media = Array.isArray(body.media)
       ? body.media
